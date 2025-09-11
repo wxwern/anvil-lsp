@@ -14,9 +14,14 @@
  *       "type": "warning" | "error",
  *       "path": string | null,
  *       "trace": {
- *         "line": number,
- *         "col": number,
- *         "len": number
+ *         "start": {
+ *           "line": number,
+ *           "col": number
+ *         },
+ *         "end": {
+ *           "line": number,
+ *           "col": number
+ *         }
  *       } | null,
  *       "desc": string
  *     }
@@ -31,16 +36,28 @@ import * as path from 'path';
 import { spawn } from 'child_process';
 
 /**
+ * JSON position structure from anvil compiler
+ */
+interface AnvilJsonPosition {
+    line: number;
+    col: number;
+}
+
+/**
+ * JSON trace structure from anvil compiler
+ */
+interface AnvilJsonTrace {
+    start: AnvilJsonPosition;
+    end: AnvilJsonPosition;
+}
+
+/**
  * JSON error structure from anvil compiler
  */
 interface AnvilJsonError {
     type: "warning" | "error";
     path?: string | null;
-    trace?: {
-        line: number;
-        col: number;
-        len: number;
-    } | null;
+    trace?: AnvilJsonTrace | null;
     desc: string;
 }
 
@@ -61,12 +78,14 @@ export interface AnvilCompilationError {
     type: "warning" | "error";
     /** The absolute file path where the error occurred */
     filepath: string;
-    /** The line number (1-based) where the error occurred */
-    line: number;
-    /** The column number (1-based) where the error occurred */
-    col: number;
-    /** The number of characters in the error */
-    length: number;
+    /** The line number (1-based) where the error starts */
+    startLine: number;
+    /** The column number (1-based) where the error starts */
+    startCol: number;
+    /** The line number (1-based) where the error ends */
+    endLine: number;
+    /** The column number (1-based) where the error ends */
+    endCol: number;
     /** The full error message description */
     message: string;
 }
@@ -95,7 +114,7 @@ export interface AnvilCompilationResult {
  * 
  * if (!result.success) {
  *   result.errors.forEach(error => {
- *     console.log(`${error.filepath}:${error.line}:${error.col} - ${error.message}`);
+ *     console.log(`${error.filepath}:${error.trace.start.line}:${error.trace.start.col} - ${error.message}`);
  *   });
  * }
  * ```
@@ -137,22 +156,25 @@ export class AnvilCompiler {
             }
 
             if (closestLineOffset === -1) {
+                console.warn(`Could not map line number ${lineNumber} to any input file!`);
                 return null;
             }
 
             return { filePath: closestFilePath, line: lineOffset - closestLineOffset + 1 };
         }
 
-        console.log('Input files:', files);
-        console.log("File data contents:", inputContents);
+        if (process.env.DEBUG) {
+            console.log('Input files:', files);
+            console.log("File data contents:", inputContents);
 
-        console.log("Merged:");
-        for (const [i, line] of mergedContent.split('\n').entries()) {
-            console.log(`  ${i + 1}: ${line}`);
+            console.log("Merged:");
+            for (const [i, line] of mergedContent.split('\n').entries()) {
+                console.log(`  ${i + 1}: ${line}`);
+            }
+
+            console.log('Line offsets:', lineOffsets);
+            console.log();
         }
-
-        console.log('Line offsets:', lineOffsets);
-        console.log();
 
         return new Promise((resolve) => {
             // Use -json flag to get structured output
@@ -193,9 +215,10 @@ export class AnvilCompiler {
                         errors: [{
                             type: 'error',
                             filepath: '',
-                            line: 0,
-                            col: 0,
-                            length: 1,
+                            startLine: 1,
+                            startCol: 0,
+                            endLine: 1,
+                            endCol: Number.MAX_VALUE,
                             message: `Failed to parse compiler output as JSON: ${parseError}\n\nRaw output:\n${stdout}\n\nRaw stderr:\n${stderr}`
                         }],
                         stderr,
@@ -210,9 +233,10 @@ export class AnvilCompiler {
                     errors: [{
                         type: 'error',
                         filepath: '',
-                        line: 0,
-                        col: 0,
-                        length: Number.MAX_VALUE,
+                        startLine: 1,
+                        startCol: 0,
+                        endLine: 1,
+                        endCol: Number.MAX_VALUE,
                         message: 
                             `Failed to execute anvil compiler: ${error.message}\n\n` +
                             `Ensure it's in your PATH or specified correctly in Anvil Language Server extension settings`
@@ -239,13 +263,21 @@ export class AnvilCompiler {
     ): AnvilCompilationError[] {
 
         return jsonErrors.map(error => {
-            const originalLocation = lookupOriginalLocation(error.trace?.line || 0)
+            const startLine = error.trace?.start?.line ?? 1;
+            const endLine = error.trace?.end?.line ?? startLine;
+            const startCol = error.trace?.start?.col ?? 0;
+            const endCol = error.trace?.end?.col ?? startCol;
+            
+            const originalStartLocation = lookupOriginalLocation(startLine);
+            const originalEndLocation = lookupOriginalLocation(endLine);
+            
             return {
                 type: error.type,
-                filepath: originalLocation?.filePath || '',
-                line: originalLocation?.line || 0,
-                col: error.trace?.col || 0,
-                length: error.trace?.len || 1,
+                filepath: originalStartLocation?.filePath || '',
+                startLine: originalStartLocation?.line || startLine,
+                startCol: startCol,
+                endLine: originalEndLocation?.line || endLine,
+                endCol: endCol,
                 message: error.desc
             };
         });
@@ -338,8 +370,10 @@ export class AnvilCompiler {
                     extractedImports[j] = resolvedPath(path.dirname(importPath), extractedImports[j]);
                 }
 
-                console.log(`File ${importPath} imports:`, extractedImports);
-                console.log();
+                if (process.env.DEBUG) {
+                    console.log(`File ${importPath} imports:`, extractedImports);
+                    console.log();
+                }
 
                 imports.push(...extractedImports);
                 dependencyGraph.set(importPath, extractedImports);

@@ -113,17 +113,6 @@ let globalCompileLock: {[key: string]: Promise<AnvilCompilationResult>} = {};
 // Global pending compile flags to debounce multiple compile requests
 let globalPendingCompile: {[key: string]: boolean} = {};
 
-let diagnosticRefreshTimeout: NodeJS.Timeout | undefined;
-function scheduleDiagnosticRefresh(afterMs: number = 1000) {
-	if (diagnosticRefreshTimeout) {
-		clearTimeout(diagnosticRefreshTimeout);
-	}
-	diagnosticRefreshTimeout = setTimeout(() => {
-		connection.languages.diagnostics.refresh();
-		diagnosticRefreshTimeout = undefined;
-	}, afterMs);
-}
-
 connection.onDidChangeConfiguration(change => {
 	if (hasConfigurationCapability) {
 		// Reset all cached document settings
@@ -136,7 +125,7 @@ connection.onDidChangeConfiguration(change => {
 	// Refresh the diagnostics since the `maxNumberOfProblems` could have changed.
 	// We could optimize things here and re-fetch the setting first can compare it
 	// to the existing setting, but this is out of scope for this example.
-	scheduleDiagnosticRefresh();
+	connection.languages.diagnostics.refresh();
 });
 
 function getDocumentSettings(resource: string): Thenable<AnvilServerSettings> {
@@ -168,16 +157,26 @@ async function convertAnvilCompilerResultToDiagnostics(result: AnvilCompilationR
 			break;
 		}
 
+		const errorTypeString = { 
+			'warning': 'Warning',
+			'error': 'Error'
+		}
+
+		const errorTypeDiagnosticSeverity = {
+			'warning': DiagnosticSeverity.Warning,
+			'error': DiagnosticSeverity.Error
+		}
+
 		const diagnostic: Diagnostic = {
-			severity: error.type === 'warning' ? DiagnosticSeverity.Warning : DiagnosticSeverity.Error,
+			severity: errorTypeDiagnosticSeverity[error.type] || DiagnosticSeverity.Error,
 			range: {
 				start: {
-					line: Math.max(0, error.line - 1),
-					character: Math.max(0, error.col),
+					line: Math.max(0, error.startLine - 1),
+					character: Math.max(0, error.startCol),
 				},
 				end: {
-					line: Math.max(0, error.line - 1),
-					character: Math.max(0, error.col + (error.length || 1))
+					line: Math.max(0, error.endLine - 1),
+					character: Math.max(0, error.endCol)
 				}
 			},
 			message: error.message,
@@ -191,7 +190,7 @@ async function convertAnvilCompilerResultToDiagnostics(result: AnvilCompilationR
 						uri: textDocument.uri,
 						range: diagnostic.range
 					},
-					message: `Anvil Compiler ${error.type === 'warning' ? 'Warning' : 'Error'}`,
+					message: `Anvil Compiler ${errorTypeString[error.type] || 'Error'}`,
 				}
 			];
 		}
@@ -212,7 +211,7 @@ connection.languages.diagnostics.on(async (params) => {
 	if (document !== undefined) {
 		return {
 			kind: DocumentDiagnosticReportKind.Full,
-			items: await validateTextDocument(document)
+			items: await delayedValidateTextDocument(document)
 		} satisfies DocumentDiagnosticReport;
 	} else {
 		// We don't know the document. We can either try to read it from disk
@@ -225,11 +224,26 @@ connection.languages.diagnostics.on(async (params) => {
 });
 
 
-// The content of a text document has changed. This event is emitted
-// when the text document first opened or when its content has changed.
-documents.onDidChangeContent(change => {
-	scheduleDiagnosticRefresh();
-});
+let pendingValidationRequests: { [uri: string]: { timeout: NodeJS.Timeout, cancel: () => void } } = {};
+async function delayedValidateTextDocument(textDocument: TextDocument): Promise<Diagnostic[]> {
+	pendingValidationRequests[textDocument.uri]?.cancel();
+
+	return new Promise((resolve) => {
+		const timeout = setTimeout(async () => {
+			delete pendingValidationRequests[textDocument.uri];
+			const diagnostics = await validateTextDocument(textDocument);
+			resolve(diagnostics);
+		}, 500);
+
+		const cancel = () => {
+			clearTimeout(timeout);
+			delete pendingValidationRequests[textDocument.uri];
+			resolve([]);
+		};
+		
+		pendingValidationRequests[textDocument.uri] = { timeout, cancel };
+	});
+}
 
 async function validateTextDocument(textDocument: TextDocument): Promise<Diagnostic[]> {
 
@@ -266,7 +280,6 @@ async function validateTextDocument(textDocument: TextDocument): Promise<Diagnos
 connection.onDidChangeWatchedFiles(_change => {
 	// Monitored files have change in VSCode
 	connection.console.log('We received a file change event');
-	scheduleDiagnosticRefresh();
 });
 
 // This handler provides the initial list of the completion items.
