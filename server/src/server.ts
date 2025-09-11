@@ -24,6 +24,7 @@ import {
 } from 'vscode-languageserver-textdocument';
 
 import {
+	AnvilCompilationResult,
 	AnvilCompiler
 } from './anvilCompiler';
 
@@ -106,6 +107,23 @@ let globalSettings: AnvilServerSettings = defaultSettings;
 // Cache the settings of all open documents
 const documentSettings = new Map<string, Thenable<AnvilServerSettings>>();
 
+// Global compile lock to avoid concurrent compilations
+let globalCompileLock: {[key: string]: Promise<AnvilCompilationResult>} = {};
+
+// Global pending compile flags to debounce multiple compile requests
+let globalPendingCompile: {[key: string]: boolean} = {};
+
+let diagnosticRefreshTimeout: NodeJS.Timeout | undefined;
+function scheduleDiagnosticRefresh(afterMs: number = 1000) {
+	if (diagnosticRefreshTimeout) {
+		clearTimeout(diagnosticRefreshTimeout);
+	}
+	diagnosticRefreshTimeout = setTimeout(() => {
+		connection.languages.diagnostics.refresh();
+		diagnosticRefreshTimeout = undefined;
+	}, afterMs);
+}
+
 connection.onDidChangeConfiguration(change => {
 	if (hasConfigurationCapability) {
 		// Reset all cached document settings
@@ -118,7 +136,7 @@ connection.onDidChangeConfiguration(change => {
 	// Refresh the diagnostics since the `maxNumberOfProblems` could have changed.
 	// We could optimize things here and re-fetch the setting first can compare it
 	// to the existing setting, but this is out of scope for this example.
-	connection.languages.diagnostics.refresh();
+	scheduleDiagnosticRefresh();
 });
 
 function getDocumentSettings(resource: string): Thenable<AnvilServerSettings> {
@@ -136,49 +154,14 @@ function getDocumentSettings(resource: string): Thenable<AnvilServerSettings> {
 	return result;
 }
 
-// Only keep settings for open documents
-documents.onDidClose(e => {
-	documentSettings.delete(e.document.uri);
-});
-
-
-connection.languages.diagnostics.on(async (params) => {
-	const document = documents.get(params.textDocument.uri);
-	if (document !== undefined) {
-		return {
-			kind: DocumentDiagnosticReportKind.Full,
-			items: await validateTextDocument(document)
-		} satisfies DocumentDiagnosticReport;
-	} else {
-		// We don't know the document. We can either try to read it from disk
-		// or we don't report problems for it.
-		return {
-			kind: DocumentDiagnosticReportKind.Full,
-			items: []
-		} satisfies DocumentDiagnosticReport;
-	}
-});
-
-// The content of a text document has changed. This event is emitted
-// when the text document first opened or when its content has changed.
-documents.onDidChangeContent(change => {
-	validateTextDocument(change.document);
-	connection.languages.diagnostics.refresh();
-});
-
-async function validateTextDocument(textDocument: TextDocument): Promise<Diagnostic[]> {
-	// In this simple example we get the settings for every validate run.
+async function convertAnvilCompilerResultToDiagnostics(result: AnvilCompilationResult, textDocument: TextDocument): Promise<Diagnostic[]> {
+	let problems = 0;
 	const settings = await getDocumentSettings(textDocument.uri);
-
-	// Create a new compiler instance and use it to compile the document
-	const compiler = new AnvilCompiler(settings.projectRoot, settings.anvilBinaryPath);
-	const filePath = textDocument.uri.replace('file://', '');
-	const result = await compiler.compile(filePath);
+	
+	const diagnostics: Diagnostic[] = [];
+	if (!result || !result.errors) return diagnostics;
 
 	// Convert it to diagnostics information
-	let problems = 0;
-	const diagnostics: Diagnostic[] = [];
-
 	for (let error of result.errors) {
 		problems++;
 		if (problems > settings.maxNumberOfProblems) {
@@ -215,14 +198,75 @@ async function validateTextDocument(textDocument: TextDocument): Promise<Diagnos
 
 		diagnostics.push(diagnostic);
 	}
-
 	return diagnostics;
+}
+
+// Only keep settings for open documents
+documents.onDidClose(e => {
+	documentSettings.delete(e.document.uri);
+});
+
+
+connection.languages.diagnostics.on(async (params) => {
+	const document = documents.get(params.textDocument.uri);
+	if (document !== undefined) {
+		return {
+			kind: DocumentDiagnosticReportKind.Full,
+			items: await validateTextDocument(document)
+		} satisfies DocumentDiagnosticReport;
+	} else {
+		// We don't know the document. We can either try to read it from disk
+		// or we don't report problems for it.
+		return {
+			kind: DocumentDiagnosticReportKind.Full,
+			items: []
+		} satisfies DocumentDiagnosticReport;
+	}
+});
+
+
+// The content of a text document has changed. This event is emitted
+// when the text document first opened or when its content has changed.
+documents.onDidChangeContent(change => {
+	scheduleDiagnosticRefresh();
+});
+
+async function validateTextDocument(textDocument: TextDocument): Promise<Diagnostic[]> {
+
+	if (globalPendingCompile[textDocument.uri]) {
+		// There's an ongoing compilation for this document, do not run now.
+		globalPendingCompile[textDocument.uri] = true;
+		const result = await globalCompileLock[textDocument.uri];
+		return await convertAnvilCompilerResultToDiagnostics(result, textDocument);
+	}
+
+	globalCompileLock[textDocument.uri] = (async () => {
+		let result: AnvilCompilationResult | undefined;
+		while (!result || globalPendingCompile[textDocument.uri]) {
+			delete globalPendingCompile[textDocument.uri];
+
+			const settings = await getDocumentSettings(textDocument.uri);
+
+			const compiler = new AnvilCompiler(settings.projectRoot, settings.anvilBinaryPath);
+			const filePath = textDocument.uri.replace('file://', '');
+			const fileData = { [filePath]: textDocument.getText() };
+
+			result = await compiler.compile(filePath, fileData);
+		}
+		return result;
+	})();
+
+	const result = await globalCompileLock[textDocument.uri];
+	delete globalCompileLock[textDocument.uri];
+	delete globalPendingCompile[textDocument.uri];
+
+	return await convertAnvilCompilerResultToDiagnostics(result, textDocument);
 }
 
 connection.onDidChangeWatchedFiles(_change => {
 	// Monitored files have change in VSCode
 	connection.console.log('We received a file change event');
-	connection.languages.diagnostics.refresh();
+	scheduleDiagnosticRefresh();
 });
 
 // This handler provides the initial list of the completion items.
