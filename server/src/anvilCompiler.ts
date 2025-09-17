@@ -46,9 +46,20 @@ interface AnvilJsonPosition {
 /**
  * JSON trace structure from anvil compiler
  */
+
 interface AnvilJsonTrace {
     start: AnvilJsonPosition;
     end: AnvilJsonPosition;
+}
+
+type AnvilJsonFragment =
+    | { kind: "text"; text: string }
+    | { kind: "codespan"; text?: string; path?: string | null; trace: AnvilJsonTrace };
+
+interface AnvilJsonError {
+    type: "warning" | "error";
+    path?: string | null;
+    description: AnvilJsonFragment[];
 }
 
 /**
@@ -70,12 +81,11 @@ interface AnvilJsonOutput {
     output?: string | null;
 }
 
+
 /**
- * Represents a compilation error from the Anvil compiler
+ * Represents information about a compilation error from the Anvil compiler
  */
-export interface AnvilCompilationError {
-    /** The error type: "warning" or "error" */
-    type: "warning" | "error";
+export interface AnvilCompilationErrorInfo {
     /** The absolute file path where the error occurred */
     filepath: string;
     /** The line number (1-based) where the error starts */
@@ -88,6 +98,17 @@ export interface AnvilCompilationError {
     endCol: number;
     /** The full error message description */
     message: string;
+}
+
+/**
+ * Represents a compilation error from the Anvil compiler
+ */
+export interface AnvilCompilationError extends AnvilCompilationErrorInfo {
+    /** The error type: "warning" or "error" */
+    type: "warning" | "error";
+
+    /** Other supplementary information about the error */
+    supplementaryInfo?: AnvilCompilationErrorInfo[];
 }
 
 /**
@@ -258,27 +279,94 @@ export class AnvilCompiler {
      * @returns Array of AnvilCompilationError objects
      */
     private convertJsonErrors(
-        jsonErrors: AnvilJsonError[], 
+        jsonErrors: AnvilJsonError[],
         lookupOriginalLocation: (line: number) => { filePath: string, line: number } | null
     ): AnvilCompilationError[] {
-
         return jsonErrors.map(error => {
-            const startLine = error.trace?.start?.line ?? 1;
-            const endLine = error.trace?.end?.line ?? startLine;
-            const startCol = error.trace?.start?.col ?? 0;
-            const endCol = error.trace?.end?.col ?? startCol;
+            const LINE_OFFSET = 0; // Anvil lines are 1-based (no offset needed)
+            const COL_OFFSET = 1;  // Anvil compiler columns are 0-based (+1 offset needed)
+
+            // Find the first codespan fragment
+            const codespan = error.description.find(f => f.kind === "codespan") as (AnvilJsonFragment & { kind: "codespan" }) | undefined;
             
+            let startLine = 1, endLine = 1, startCol = 0, endCol = 0, filepath = error.path || '';
+
+            if (codespan && codespan.trace) {
+                startLine = codespan.trace.start.line;
+                endLine = codespan.trace.end.line;
+                startCol = codespan.trace.start.col;
+                endCol = codespan.trace.end.col;
+                if (codespan.path) {
+                    filepath = codespan.path;
+                }
+            }
+
             const originalStartLocation = lookupOriginalLocation(startLine);
             const originalEndLocation = lookupOriginalLocation(endLine);
+
+            startLine = originalStartLocation?.line || startLine;
+            endLine = originalEndLocation?.line || endLine;
+            filepath = originalStartLocation?.filePath || error.path || filepath;
             
+            // Assemble full error message from all text fragments
+            let message = '';
+            const numberOfCodespanFragments = error.description.filter(f => f.kind === "codespan").length;
+            for (const fragment of error.description) {
+                if (fragment.kind === "text" && fragment.text) {
+                    message += fragment.text + '\n';
+                } else if (fragment.kind === "codespan" && numberOfCodespanFragments > 1) {
+                    const originalFragmentStart = lookupOriginalLocation(fragment.trace.start.line);
+                    if (originalFragmentStart) {
+                        const relPath = path.relative(this.projectRoot, originalFragmentStart.filePath);
+                        message += `${relPath}:${originalFragmentStart.line}:${fragment.trace.start.col}:\n`;
+                    }
+
+                    message += (fragment.text || '') + '\n';
+                }
+            }
+
+            // Assemble supplementary info if multiple codespans
+            let supplementaryInfo: AnvilCompilationErrorInfo[] = [];
+            if (numberOfCodespanFragments > 1) {
+                let codespanDescribedBy = ""; // Text immediately preceding the codespan
+                for (const fragment of error.description) {
+                    switch (fragment.kind) {
+                        case "text":
+                            codespanDescribedBy = fragment.text?.trim().replace(/:$/, '');
+                            break;
+                        case "codespan":
+                            const originalFragmentStart = lookupOriginalLocation(fragment.trace.start.line);
+                            const originalFragmentEnd = lookupOriginalLocation(fragment.trace.end.line);
+                            if (!originalFragmentStart || !originalFragmentEnd) continue;
+
+                            let fragmentFilePath = filepath;
+                            if (fragment.path) {
+                                fragmentFilePath = fragment.path;
+                            }
+                            
+                            supplementaryInfo.push({
+                                filepath: originalFragmentStart.filePath,
+                                startLine: originalFragmentStart.line + LINE_OFFSET,
+                                startCol: fragment.trace.start.col + COL_OFFSET,
+                                endLine: originalFragmentEnd.line + LINE_OFFSET,
+                                endCol: fragment.trace.end.col + COL_OFFSET,
+                                message: codespanDescribedBy.trim(),
+                            });
+
+                            codespanDescribedBy = "";
+                    }
+                }
+            }
+
             return {
                 type: error.type,
-                filepath: originalStartLocation?.filePath || '',
-                startLine: originalStartLocation?.line || startLine,
-                startCol: startCol,
-                endLine: originalEndLocation?.line || endLine,
-                endCol: endCol,
-                message: error.desc
+                filepath,
+                startLine: startLine + LINE_OFFSET,
+                startCol: startCol + COL_OFFSET,
+                endLine: endLine + LINE_OFFSET,
+                endCol: endCol + COL_OFFSET,
+                message: message,
+                supplementaryInfo: supplementaryInfo.length > 0 ? supplementaryInfo : undefined
             };
         });
     }

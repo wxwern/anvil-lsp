@@ -150,7 +150,6 @@ async function convertAnvilCompilerResultToDiagnostics(result: AnvilCompilationR
 	const diagnostics: Diagnostic[] = [];
 	if (!result || !result.errors) return diagnostics;
 
-	// Convert it to diagnostics information
 	for (let error of result.errors) {
 		problems++;
 		if (problems > settings.maxNumberOfProblems) {
@@ -172,11 +171,11 @@ async function convertAnvilCompilerResultToDiagnostics(result: AnvilCompilationR
 			range: {
 				start: {
 					line: Math.max(0, error.startLine - 1),
-					character: Math.max(0, error.startCol),
+					character: Math.max(0, error.startCol - 1),
 				},
 				end: {
 					line: Math.max(0, error.endLine - 1),
-					character: Math.max(0, error.endCol)
+					character: Math.max(0, error.endCol - 1)
 				}
 			},
 			message: error.message,
@@ -184,15 +183,41 @@ async function convertAnvilCompilerResultToDiagnostics(result: AnvilCompilationR
 		};
 
 		if (hasDiagnosticRelatedInformationCapability) {
-			diagnostic.relatedInformation = [
-				{
-					location: {
-						uri: textDocument.uri,
-						range: diagnostic.range
-					},
-					message: `Anvil Compiler ${errorTypeString[error.type] || 'Error'}`,
+			diagnostic.relatedInformation = [];
+
+			const mainMessage = `Anvil Compiler ${errorTypeString[error.type] || 'Error'}`;
+			
+			if (error.supplementaryInfo) {
+				for (let info of error.supplementaryInfo) {
+					diagnostic.relatedInformation.push({
+						location: {
+							uri: textDocument.uri,
+							range: {
+								start: {
+									line: Math.max(0, info.startLine - 1),
+									character: Math.max(0, info.startCol - 1)
+								},
+								end: {
+									line: Math.max(0, info.endLine - 1),
+									character: Math.max(0, info.endCol - 1)
+								}
+							}
+						},
+						message: `${mainMessage} (${info.message})`
+					});
 				}
-			];
+
+			} else {
+				diagnostic.relatedInformation = [
+					{
+						location: {
+							uri: textDocument.uri,
+							range: Object.assign({}, diagnostic.range)
+						},
+						message: mainMessage
+					}
+				];
+			}
 		}
 
 		diagnostics.push(diagnostic);
