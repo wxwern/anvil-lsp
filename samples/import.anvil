@@ -1,5 +1,7 @@
 import "pipeline/Alu.anvil"
 
+// AluExample.anvil
+
 proc AluExample () {
     chan alu_le -- alu_ri : Alu_itfc<logic[4]>;
     spawn Alu<logic[4]>(alu_le);
