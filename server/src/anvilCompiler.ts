@@ -127,12 +127,12 @@ export interface AnvilCompilationResult {
 
 /**
  * Anvil compiler wrapper that executes the bin/anvil binary and parses compilation errors.
- * 
+ *
  * @example
  * ```typescript
  * const compiler = new AnvilCompiler('/path/to/project');
  * const result = await compiler.compile('src/example.anvil');
- * 
+ *
  * if (!result.success) {
  *   result.errors.forEach(error => {
  *     console.log(`${error.filepath}:${error.trace.start.line}:${error.trace.start.col} - ${error.message}`);
@@ -143,8 +143,6 @@ export interface AnvilCompilationResult {
 export class AnvilCompiler {
     private readonly projectRoot: string;
     private readonly anvilBinaryPath: string;
-
-    private static IMPORT_REGEX = /^\s*import\s+"(([^"]|\\")+)"\s*$/gm;
 
     constructor(projectRoot?: string, anvilBinaryPath?: string) {
         this.projectRoot = projectRoot || process.cwd();
@@ -160,46 +158,43 @@ export class AnvilCompiler {
         const files = Array.isArray(filePaths) ? filePaths : [filePaths];
         fileData = {...fileData}; // Clone fileData
 
-        const inputContents = await this.importReferencedFiles(files, fileData);
-        const { mergedContent, lineOffsets, unknownPaths } = this.mergeContentForStdin(inputContents);
-
-        function lookupOriginalLocationFromLineNumber(lineNumber: number): { filePath: string, line: number } | null {
-            let closestLineOffset = -1;
-            let closestFilePath = '';
-
-            const lineOffset = lineNumber - 1;
-
-            for (const [filePath, offset] of Object.entries(lineOffsets)) {
-                if (offset <= lineOffset && offset > closestLineOffset) {
-                    closestLineOffset = offset;
-                    closestFilePath = filePath;
-                }
-            }
-
-            if (closestLineOffset === -1) {
-                console.warn(`Could not map line number ${lineNumber} to any input file!`);
-                return null;
-            }
-
-            return { filePath: closestFilePath, line: lineOffset - closestLineOffset + 1 };
+        if (!files || files.length === 0) {
+            return {
+                success: true,
+                errors: [],
+                stderr: '',
+                stdout: ''
+            };
         }
+
+        if (files.length > 1) {
+            return {
+                success: false,
+                errors: [{
+                    type: 'error',
+                    filepath: '',
+                    startLine: 1,
+                    startCol: 0,
+                    endLine: 1,
+                    endCol: Number.MAX_VALUE,
+                    message: 'AnvilCompiler only supports compiling one file at a time, but language server was asked to compile multiple files.'
+                }],
+                stderr: '',
+                stdout: ''
+            };
+        }
+
+        const hasInMemoryData = fileData[files[0]] !== undefined;
 
         if (process.env.DEBUG) {
             console.log('Input files:', files);
-            console.log("File data contents:", inputContents);
-
-            console.log("Merged:");
-            for (const [i, line] of mergedContent.split('\n').entries()) {
-                console.log(`  ${i + 1}: ${line}`);
-            }
-
-            console.log('Line offsets:', lineOffsets);
             console.log();
         }
 
         return new Promise((resolve) => {
             // Use -json flag to get structured output
-            const args = ['-json', ...unknownPaths, '/dev/stdin'];
+            const args = hasInMemoryData ? ['-json', '-stdin', files[0]] : ['-json', files[0]];
+
             console.log("Running anvil with args:", args);
             const process = spawn(this.anvilBinaryPath, args, {
                 stdio: ['pipe', 'pipe', 'pipe'],
@@ -219,10 +214,9 @@ export class AnvilCompiler {
 
             process.on('close', (code) => {
                 try {
-                    // Parse JSON output from stdout
                     const jsonOutput: AnvilJsonOutput = JSON.parse(stdout);
-                    const errors = this.convertJsonErrors(jsonOutput.errors, l => lookupOriginalLocationFromLineNumber(l));
-                    
+                    const errors = this.convertJsonErrors(jsonOutput.errors);
+
                     resolve({
                         success: jsonOutput.success,
                         errors,
@@ -258,7 +252,7 @@ export class AnvilCompiler {
                         startCol: 0,
                         endLine: 1,
                         endCol: Number.MAX_VALUE,
-                        message: 
+                        message:
                             `Failed to execute anvil compiler: ${error.message}\n\n` +
                             `Ensure it's in your PATH or specified correctly in Anvil Language Server extension settings`
                     }],
@@ -267,8 +261,10 @@ export class AnvilCompiler {
                 });
             });
 
-            // Write merged content to stdin
-            process.stdin.write(mergedContent + '\n');
+            if (hasInMemoryData) {
+                const content = fileData[files[0]];
+                process.stdin.write(content + '\n');
+            }
             process.stdin.end();
         });
     }
@@ -279,8 +275,7 @@ export class AnvilCompiler {
      * @returns Array of AnvilCompilationError objects
      */
     private convertJsonErrors(
-        jsonErrors: AnvilJsonError[],
-        lookupOriginalLocation: (line: number) => { filePath: string, line: number } | null
+        jsonErrors: AnvilJsonError[]
     ): AnvilCompilationError[] {
         return jsonErrors.map(error => {
             const LINE_OFFSET = 0; // Anvil lines are 1-based (no offset needed)
@@ -288,7 +283,7 @@ export class AnvilCompiler {
 
             // Find the first codespan fragment
             const codespan = error.description.find(f => f.kind === "codespan") as (AnvilJsonFragment & { kind: "codespan" }) | undefined;
-            
+
             let startLine = 1, endLine = 1, startCol = 0, endCol = 0, filepath = error.path || '';
 
             if (codespan && codespan.trace) {
@@ -301,27 +296,19 @@ export class AnvilCompiler {
                 }
             }
 
-            const originalStartLocation = lookupOriginalLocation(startLine);
-            const originalEndLocation = lookupOriginalLocation(endLine);
-
-            startLine = originalStartLocation?.line || startLine;
-            endLine = originalEndLocation?.line || endLine;
-            filepath = originalStartLocation?.filePath || error.path || filepath;
-            
             // Assemble full error message from all text fragments
             let message = '';
             const numberOfCodespanFragments = error.description.filter(f => f.kind === "codespan").length;
             for (const fragment of error.description) {
                 if (fragment.kind === "text" && fragment.text) {
-                    message += fragment.text + '\n';
+                    message += fragment.text || '';
                 } else if (fragment.kind === "codespan" && numberOfCodespanFragments > 1) {
-                    const originalFragmentStart = lookupOriginalLocation(fragment.trace.start.line);
-                    if (originalFragmentStart) {
-                        const relPath = path.relative(this.projectRoot, originalFragmentStart.filePath);
-                        message += `${relPath}:${originalFragmentStart.line}:${fragment.trace.start.col}:\n`;
-                    }
-
-                    message += (fragment.text || '') + '\n';
+                    const relPath = path.relative(this.projectRoot, fragment.path || filepath);
+                    message += `${relPath}:${fragment.trace.start.line}:${fragment.trace.start.col}:\n`;
+                    message += (fragment.text || '')
+                }
+                if (fragment.text && !fragment.text.endsWith('\n')) {
+                    message += '\n';
                 }
             }
 
@@ -335,20 +322,11 @@ export class AnvilCompiler {
                             codespanDescribedBy = fragment.text?.trim().replace(/:$/, '');
                             break;
                         case "codespan":
-                            const originalFragmentStart = lookupOriginalLocation(fragment.trace.start.line);
-                            const originalFragmentEnd = lookupOriginalLocation(fragment.trace.end.line);
-                            if (!originalFragmentStart || !originalFragmentEnd) continue;
-
-                            let fragmentFilePath = filepath;
-                            if (fragment.path) {
-                                fragmentFilePath = fragment.path;
-                            }
-                            
                             supplementaryInfo.push({
-                                filepath: originalFragmentStart.filePath,
-                                startLine: originalFragmentStart.line + LINE_OFFSET,
+                                filepath: fragment.path || filepath,
+                                startLine: fragment.trace.start.line + LINE_OFFSET,
                                 startCol: fragment.trace.start.col + COL_OFFSET,
-                                endLine: originalFragmentEnd.line + LINE_OFFSET,
+                                endLine: fragment.trace.end.line + LINE_OFFSET,
                                 endCol: fragment.trace.end.col + COL_OFFSET,
                                 message: codespanDescribedBy.trim(),
                             });
@@ -372,181 +350,6 @@ export class AnvilCompiler {
     }
 
     /**
-     * Merge filepaths and their content into a single stream for compilation via standard input.
-     * 
-     * @param pathContentPairs List of [filepath, content] pairs to process.
-     * @returns Merged content string suitable for stdin, together with a map of each file's line offsets.
-     */
-    private mergeContentForStdin(pathContentPairs: [string, string | null][]): { mergedContent: string, lineOffsets: Record<string, number> , unknownPaths: string[]} {
-        let mergedContent = '';
-        const lineOffsets: Record<string, number> = {};
-        let currentLine = 0;
-
-        const unknownPaths: string[] = [];
-
-        for (const [filePath, content] of pathContentPairs) {
-            if (content === null) {
-                const absolutePath = path.resolve(this.projectRoot, filePath);
-                unknownPaths.push(absolutePath);
-                continue; // Skip missing files
-            }
-
-            lineOffsets[filePath] = currentLine + 1; // +1 to the line after the comment
-
-            mergedContent += `// ${filePath}\n`;
-            mergedContent += content
-
-            if (!content.endsWith('\n')) {
-                mergedContent += '\n';
-                currentLine += 1;
-            }
-
-            mergedContent += '\n';
-
-            currentLine += content.split('\n').length + 1;
-        }
-
-        return { mergedContent, lineOffsets, unknownPaths };
-    }
-
-    /**
-     * Automatically collects imports from a base set of cached file data. This also modifies the file data map in-place.
-     * 
-     * @param filePaths Initial list of files to process
-     * @param fileData Map of file paths and their content (if available)
-     * 
-     * @returns Array of [filePath, content] tuples ordered by dependency (deepest first)
-     */
-    private async importReferencedFiles(filePaths: string[], fileData: Record<string, string | null> = {}): Promise<[string, string | null][]> {
-        const dependencyGraph: Map<string, string[]> = new Map();
-        const imports = [...filePaths];
-
-        const resolvedPath = (base: string, p: string): string => {
-            const absPath = path.resolve(base, p);
-            if (absPath.startsWith(this.projectRoot)) {
-                return path.relative(this.projectRoot, absPath);
-            }
-            return absPath;
-        }
-
-        let i: number;
-        for (i = 0; i < imports.length; i++) {
-            const importPath = imports[i];
-            
-            if (!fileData[importPath]) {
-                // Try to read file content if not already cached
-                try {
-                    const content = await fs.readFile(importPath, 'utf-8');
-                    fileData[importPath] = content;
-                } catch (e) {
-                    // Ignore missing files, they will be reported by the compiler
-                    fileData[importPath] = null;
-                    dependencyGraph.set(importPath, []);
-                    continue;
-                }
-            }
-
-            if (dependencyGraph.has(importPath)) {
-                continue; // Already processed
-            }
-
-            try {
-                const extractedImports = this.extractImports(fileData[importPath]);
-                
-                // Resolve relative to current file
-                for (let j = 0; j < extractedImports.length; j++) {
-                    extractedImports[j] = resolvedPath(path.dirname(importPath), extractedImports[j]);
-                }
-
-                if (process.env.DEBUG) {
-                    console.log(`File ${importPath} imports:`, extractedImports);
-                    console.log();
-                }
-
-                imports.push(...extractedImports);
-                dependencyGraph.set(importPath, extractedImports);
-            } catch (e) {
-                // Ignore missing files, they will be reported by the compiler
-                dependencyGraph.set(importPath, []);
-            }
-        }
-
-        // Strip out all imports that have been collected
-        for (const [filePath, content] of Object.entries(fileData)) {
-            if (!content) continue;
-            fileData[filePath] = this.stripImports(content, (importPath) => {
-                const p = resolvedPath(path.dirname(filePath), importPath);
-                if (fileData[p] == null) {
-                    const absPath = path.resolve(this.projectRoot, p);
-                    return absPath;
-                }
-                return fileData[p] != null;
-            });
-        }
-
-        // Collect all imported files from dependency graph by topological order (deepest first)
-        const allImports: [string, string | null][] = [];
-
-        const visited = new Set<string>();
-        const visit = (filePath: string) => {
-            if (visited.has(filePath)) return;
-            visited.add(filePath);
-
-            const deps = dependencyGraph.get(filePath) || [];
-            for (const dep of deps) {
-                visit(dep);
-            }
-
-            allImports.push([filePath, fileData[filePath]]);
-        }
-
-        for (const filePath of dependencyGraph.keys()) {
-            visit(filePath);
-        }
-
-        return allImports;
-    }
-
-    /**
-     * Extract import statements from file content.
-     * @param content File content as string
-     * @returns Array of imported file paths
-     * 
-     * Example import statement: import "relative/file/path.anvil"
-     */
-    private extractImports(content: string): string[] {
-        const imports: string[] = [];
-        let match: RegExpExecArray | null;
-
-        while ((match = AnvilCompiler.IMPORT_REGEX.exec(content)) !== null) {
-            let path = match[1].replace(/\\"/g, '"'); // Unescape quotes
-            imports.push(path);
-        }
-        return imports;
-    }
-
-    /**
-     * Strip imports from file content.
-     * 
-     * @param content File content as string
-     * @param shouldStrip Callback to verify whether to strip a given import
-     * 
-     * @returns Content with import statements removed
-     */
-    private stripImports(content: string, shouldStrip: (importPath: string) => string | boolean = () => true): string {
-        return content.replace(AnvilCompiler.IMPORT_REGEX, (match, importPath) => {
-            const result = shouldStrip(importPath.replace(/\\"/g, '"'));
-            if (!result) {
-                return match;
-            }
-            if (typeof result === "string") {
-                return match.replace(importPath, result.replace(/"/g, '\\"'));
-            }
-            return "// STRIPPED: " + match;
-        }).trim();
-    }
-
-    /**
      * Get the path to the anvil binary
      */
     getAnvilBinaryPath(): string {
@@ -561,7 +364,7 @@ export class AnvilCompiler {
  * @returns Promise<CompilationResult>
  */
 export async function compileAnvil(
-    filePaths: string | string[], 
+    filePaths: string | string[],
     projectRoot?: string
 ): Promise<AnvilCompilationResult> {
     const compiler = new AnvilCompiler(projectRoot);

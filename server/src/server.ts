@@ -146,7 +146,7 @@ function getDocumentSettings(resource: string): Thenable<AnvilServerSettings> {
 async function convertAnvilCompilerResultToDiagnostics(result: AnvilCompilationResult, textDocument: TextDocument): Promise<Diagnostic[]> {
 	let problems = 0;
 	const settings = await getDocumentSettings(textDocument.uri);
-	
+
 	const diagnostics: Diagnostic[] = [];
 	if (!result || !result.errors) return diagnostics;
 
@@ -156,7 +156,7 @@ async function convertAnvilCompilerResultToDiagnostics(result: AnvilCompilationR
 			break;
 		}
 
-		const errorTypeString = { 
+		const errorTypeString = {
 			'warning': 'Warning',
 			'error': 'Error'
 		}
@@ -186,7 +186,7 @@ async function convertAnvilCompilerResultToDiagnostics(result: AnvilCompilationR
 			diagnostic.relatedInformation = [];
 
 			const mainMessage = `Anvil Compiler ${errorTypeString[error.type] || 'Error'}`;
-			
+
 			if (error.supplementaryInfo) {
 				for (let info of error.supplementaryInfo) {
 					diagnostic.relatedInformation.push({
@@ -265,7 +265,7 @@ async function delayedValidateTextDocument(textDocument: TextDocument): Promise<
 			delete pendingValidationRequests[textDocument.uri];
 			resolve([]);
 		};
-		
+
 		pendingValidationRequests[textDocument.uri] = { timeout, cancel };
 	});
 }
