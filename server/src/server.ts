@@ -28,6 +28,8 @@ import {
 	AnvilCompiler
 } from './anvilCompiler';
 
+import { AnvilAST } from './anvilAST';
+
 // Create a connection for the server, using Node's IPC as a transport.
 // Also include all preview / proposed LSP features.
 const connection = createConnection(ProposedFeatures.all);
@@ -66,7 +68,8 @@ connection.onInitialize((params: InitializeParams) => {
 			diagnosticProvider: {
 				interFileDependencies: false,
 				workspaceDiagnostics: false
-			}
+			},
+			hoverProvider: true
 		}
 	};
 	if (hasWorkspaceFolderCapability) {
@@ -109,6 +112,9 @@ const documentSettings = new Map<string, Thenable<AnvilServerSettings>>();
 
 // Global compile lock to avoid concurrent compilations
 let globalCompileLock: {[key: string]: Promise<AnvilCompilationResult>} = {};
+
+// Global compile result cache to avoid re-processing the same result
+let globalCompileResultCache: {[key: string]: AnvilCompilationResult} = {};
 
 // Global pending compile flags to debounce multiple compile requests
 let globalPendingCompile: {[key: string]: boolean} = {};
@@ -281,6 +287,9 @@ async function validateTextDocument(textDocument: TextDocument): Promise<Diagnos
 
 	globalCompileLock[textDocument.uri] = (async () => {
 		let result: AnvilCompilationResult | undefined;
+
+		delete globalCompileResultCache[textDocument.uri];
+
 		while (!result || globalPendingCompile[textDocument.uri]) {
 			delete globalPendingCompile[textDocument.uri];
 
@@ -292,6 +301,8 @@ async function validateTextDocument(textDocument: TextDocument): Promise<Diagnos
 
 			result = await compiler.compile(filePath, fileData);
 		}
+
+		globalCompileResultCache[textDocument.uri] = result;
 		return result;
 	})();
 
@@ -305,6 +316,63 @@ async function validateTextDocument(textDocument: TextDocument): Promise<Diagnos
 connection.onDidChangeWatchedFiles(_change => {
 	// Monitored files have change in VSCode
 	connection.console.log('We received a file change event');
+});
+
+connection.onHover(_event => {
+	console.log('Hover event received');
+
+	const uri = _event.textDocument.uri;
+	const document = documents.get(uri);
+
+	const ast = globalCompileResultCache[uri]?.ast;
+
+	console.log(`AST available: ${!!ast}`);
+
+	if (!document || !ast) {
+		return null;
+	}
+
+	const position = _event.position;
+	const offset = document.offsetAt(position);
+
+	const path = uri.replace('file://', '');
+
+	const navigation = ast.getNavigationToLocation(path, position.line + 1, position.character + 1);
+
+	if (!navigation) {
+		console.log(`No navigation found`);
+		return null;
+	}
+
+	console.log(`Navigation found: ${navigation.length} path components`);
+	console.log(navigation);
+
+	// TODO: Show useful information
+	const navigationFlattened = navigation.join(' > ');
+	const navigationContents = JSON.stringify(ast.getInfoForNavigation(path, navigation), null, 2);
+
+	const resolvedDefinitions = ast.navigateToDefinitionTree(path, navigation);
+	const resolvedDefinitionsFlattened = resolvedDefinitions?.map(def => {
+		const main = "- `" + def.join(' > ') + "`";
+		const span = ast.getInfoForNavigation(path, def)?.span;
+		if (span) {
+			return main + ` (Line ${span.start_line}, Col ${span.start_cnum})`;
+		} else {
+			return main;
+		}
+	});
+
+	return {
+		contents: {
+			kind: 'markdown',
+			value: "**AST Path Resolution:** `" + navigationFlattened + "`"
+			    + (resolvedDefinitions ? "\n\n---\n\n**Definition Resolution:**\n" + resolvedDefinitionsFlattened?.join('\n') : '')
+				+ (navigationContents ? "\n\n---\n\n```\n" + navigationContents + "\n```" : '')
+
+		}
+	};
+
+
 });
 
 // This handler provides the initial list of the completion items.

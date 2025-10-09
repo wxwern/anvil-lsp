@@ -34,6 +34,7 @@
 import { promises as fs } from 'fs';
 import * as path from 'path';
 import { spawn } from 'child_process';
+import { AnvilAST, AnvilASTOutput } from './anvilAST';
 
 /**
  * JSON position structure from anvil compiler
@@ -123,6 +124,8 @@ export interface AnvilCompilationResult {
     stderr: string;
     /** Raw stdout output from the compiler */
     stdout: string;
+    /** Anvil AST representation */
+    ast?: AnvilAST;
 }
 
 /**
@@ -191,59 +194,47 @@ export class AnvilCompiler {
             console.log();
         }
 
-        return new Promise((resolve) => {
-            // Use -json flag to get structured output
-            const args = hasInMemoryData ? ['-json', '-stdin', files[0]] : ['-json', files[0]];
+        // Use -json flag to get structured output
+        const args = hasInMemoryData ? ['-json', '-stdin', files[0]] : ['-json', files[0]];
+        try {
+            const stdinData = hasInMemoryData ? fileData[files[0]] : undefined
+            const result = await this.runAnvil(args, stdinData);
 
-            console.log("Running anvil with args:", args);
-            const process = spawn(this.anvilBinaryPath, args, {
-                stdio: ['pipe', 'pipe', 'pipe'],
-                cwd: this.projectRoot
-            });
+            const { stdout, stderr, exitCode } = result;
 
-            let stdout = '';
-            let stderr = '';
+            let astOutput: AnvilAST | undefined = undefined;
 
-            process.stdout.on('data', (data) => {
-                stdout += data.toString();
-            });
+            let errors: AnvilCompilationError[] = [];
 
-            process.stderr.on('data', (data) => {
-                stderr += data.toString();
-            });
+            try {
+                const result = await this.runAnvil(['-ast', ...args], stdinData);
+                const jsonOutput = JSON.parse(result.stdout);
 
-            process.on('close', (code) => {
-                try {
-                    const jsonOutput: AnvilJsonOutput = JSON.parse(stdout);
-                    const errors = this.convertJsonErrors(jsonOutput.errors);
+                errors.push(...this.convertJsonErrors(jsonOutput.errors));
 
-                    resolve({
-                        success: jsonOutput.success,
-                        errors,
-                        stderr,
-                        stdout
-                    });
-                } catch (parseError) {
-                    // If JSON parsing fails, treat as compilation error
-                    resolve({
-                        success: false,
-                        errors: [{
-                            type: 'error',
-                            filepath: '',
-                            startLine: 1,
-                            startCol: 0,
-                            endLine: 1,
-                            endCol: Number.MAX_VALUE,
-                            message: `Failed to parse compiler output as JSON: ${parseError}\n\nRaw output:\n${stdout}\n\nRaw stderr:\n${stderr}`
-                        }],
-                        stderr,
-                        stdout
-                    });
+                if (jsonOutput.success && jsonOutput.output) {
+                    astOutput = new AnvilAST(jsonOutput.output);
                 }
-            });
 
-            process.on('error', (error) => {
-                resolve({
+            } catch (e) {
+                console.error("Error parsing AST output:", e);
+            }
+
+            try {
+                const jsonOutput: AnvilJsonOutput = JSON.parse(stdout);
+                const errors = this.convertJsonErrors(jsonOutput.errors);
+
+                return {
+                    success: jsonOutput.success,
+                    errors,
+                    stderr,
+                    stdout,
+                    ast: astOutput
+                };
+            } catch (parseError) {
+                // If JSON parsing fails, treat as compilation error
+                console.error("Error parsing compiler output:", parseError);
+                return {
                     success: false,
                     errors: [{
                         type: 'error',
@@ -252,20 +243,67 @@ export class AnvilCompiler {
                         startCol: 0,
                         endLine: 1,
                         endCol: Number.MAX_VALUE,
-                        message:
-                            `Failed to execute anvil compiler: ${error.message}\n\n` +
-                            `Ensure it's in your PATH or specified correctly in Anvil Language Server extension settings`
+                        message: `Failed to parse compiler output as JSON: ${parseError}\n\nRaw output:\n${stdout}\n\nRaw stderr:\n${stderr}`
                     }],
-                    stderr: error.message,
-                    stdout: ''
-                });
+                    stderr,
+                    stdout
+                };
+            }
+
+        } catch (error) {
+            console.error("Error spawning anvil process:", error);
+
+            return {
+                success: false,
+                errors: [{
+                    type: 'error',
+                    filepath: '',
+                    startLine: 1,
+                    startCol: 0,
+                    endLine: 1,
+                    endCol: Number.MAX_VALUE,
+                    message:
+                        `Failed to execute anvil compiler: ${error instanceof Error ? error.message : String(error)}\n\n` +
+                        `Ensure it's in your PATH or specified correctly in Anvil Language Server extension settings`
+                }],
+                stderr: error instanceof Error ? error.message : String(error),
+                stdout: ''
+            };
+        }
+    }
+
+    private runAnvil(
+        args: string[], stdinData?: string
+    ): Promise<{ stdout: string; stderr: string; exitCode: number | null }> {
+
+        return new Promise((resolve, reject) => {
+            console.log(`Running anvil: ${this.anvilBinaryPath} ${args.join(' ')}`);
+            const proc = spawn(this.anvilBinaryPath, args, { cwd: this.projectRoot, stdio: 'pipe' });
+
+            let stdout = '';
+            let stderr = '';
+
+            proc.stdout.on('data', (data) => {
+                stdout += data.toString();
             });
 
-            if (hasInMemoryData) {
-                const content = fileData[files[0]];
-                process.stdin.write(content + '\n');
+            proc.stderr.on('data', (data) => {
+                stderr += data.toString();
+            });
+
+            proc.on('close', (code) => {
+                resolve({ stdout, stderr, exitCode: code });
+            });
+
+            proc.on('error', (error) => {
+                reject(error);
+            });
+
+            if (stdinData) {
+                proc.stdin.write(stdinData + '\n');
             }
-            process.stdin.end();
+
+            proc.stdin.end();
         });
     }
 
