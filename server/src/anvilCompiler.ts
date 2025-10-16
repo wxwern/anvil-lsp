@@ -194,28 +194,21 @@ export class AnvilCompiler {
             console.log();
         }
 
-        // Use -json flag to get structured output
         const args = hasInMemoryData ? ['-json', '-stdin', files[0]] : ['-json', files[0]];
         try {
             const stdinData = hasInMemoryData ? fileData[files[0]] : undefined
-            const result = await this.runAnvil(args, stdinData);
-
-            const { stdout, stderr, exitCode } = result;
+            const { stdout, stderr, exitCode } =  await this.runAnvil(args, stdinData);
 
             let astOutput: AnvilAST | undefined = undefined;
 
             let errors: AnvilCompilationError[] = [];
 
             try {
-                const result = await this.runAnvil(['-ast', ...args], stdinData);
-                const jsonOutput = JSON.parse(result.stdout);
-
-                errors.push(...this.convertJsonErrors(jsonOutput.errors));
-
-                if (jsonOutput.success && jsonOutput.output) {
-                    astOutput = new AnvilAST(jsonOutput.output);
+                const astJsonString = JSON.parse((await this.runAnvil(['-ast', ...args], stdinData)).stdout);
+                errors.push(...this.convertJsonErrors(astJsonString.errors));
+                if (astJsonString.success && astJsonString.output) {
+                    astOutput = new AnvilAST(astJsonString.output);
                 }
-
             } catch (e) {
                 console.error("Error parsing AST output:", e);
             }
