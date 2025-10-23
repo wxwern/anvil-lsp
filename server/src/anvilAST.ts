@@ -1,227 +1,34 @@
-type AnvilParam = {
-  name: string;
-  type: 'int' | 'type';
+
+export type AnvilSpan = {
+  start: { line: number; col: number };
+  end: { line: number; col: number };
 };
 
-type AnvilParamValue =
-  | { type: 'int'; value: number }
-  | { type: 'type'; value: AnvilDataType };
+export type AnvilUnknownNode = { [key: string]: any; };
+export type AnvilSpannable = { kind: string; span: AnvilSpan; };
+export type AnvilSpannableData = AnvilSpannable & { data?: any };
 
-type AnvilSpan = {
-  start_line: number;
-  start_cnum: number;
-  end_line: number;
-  end_cnum: number;
-};
+export type AnvilChannelClass = { kind: 'channel_class_def' } & AnvilSpannable & AnvilUnknownNode;
+export type AnvilMessage = { kind: 'message_def' } & AnvilSpannable & AnvilUnknownNode;
+export type AnvilType = { kind: 'type_def' } & AnvilSpannable & AnvilUnknownNode;
+export type AnvilMacro = { kind: 'macro_def' } & AnvilSpannable & AnvilUnknownNode;
+export type AnvilFunc = { kind: 'func_def' } & AnvilSpannable & AnvilUnknownNode;
+export type AnvilProc = { kind: 'proc_def' } & AnvilSpannable & AnvilUnknownNode;
 
-type AnvilEndpointDirection = 'left' | 'right';
-type AnvilMessageDirection = 'in' | 'out';
+export type AnvilRegister = { kind: 'reg_def', name: string } & AnvilSpannable & AnvilUnknownNode;
+export type AnvilEndpoint = { kind: 'endpoint_def', channel_class: string } & AnvilSpannable & AnvilUnknownNode;
+export type AnvilChannel = { kind: 'channel_def', channel_class: string, endpoint_left: string, endpoint_right: string } & AnvilSpannable & AnvilUnknownNode;
 
-type AnvilSyncMode =
-  | { type: 'dynamic' }
-  | { type: 'static'; init_offset: number; interval: number }
-  | { type: 'dependent'; message: string; delay: number };
+export type AnvilAstNode = { kind: 'ast_node' | 'expr_node' } & AnvilSpannableData;
+export type AnvilExpr = { kind: "expr", type: string } & AnvilUnknownNode;
 
-type AnvilMessage = {
-  name: string;
-  dir: AnvilMessageDirection;
-  send_sync: AnvilSyncMode;
-  recv_sync: AnvilSyncMode;
-  signal_types: {
-    dtype: AnvilDataType;
-    lifetime:
-    | { type: 'cycles'; value: number }
-    | { type: 'message'; value: { endpoint: string; message: string } }
-    | { type: 'eternal' };
-  }[];
-  span: AnvilSpan;
-};
-
-type AnvilChannelClass = {
-  name: string;
-  messages: AnvilMessage[];
-  params: AnvilParam[];
-  span: AnvilSpan;
-};
-
-type AnvilType = {
-  name: string;
-  body: AnvilDataType;
-  params: AnvilParam[];
-  span: AnvilSpan;
-}
-
-type AnvilMacro = {
-  id: string;
-  value: number;
-  span: AnvilSpan;
-}
-
-type AnvilFunc = {
-  name: string;
-  args: string[];
-  body: AnvilExprNode; // TODO
-  span: AnvilSpan;
-}
-
-type AnvilFieldNode = {
-  field: string;
-  value: AnvilExprNode;
-  span: AnvilSpan;
-};
-
-type AnvilFieldType = {
-  name: string;
-  type: AnvilDataType;
-  span: AnvilSpan;
-};
-
-type AnvilDataType =
-  | { type: 'logic' }
-  | { type: 'array'; element_type: AnvilDataType; size: number | string }
-  | { type: 'variant'; constructors: { name: string; type: AnvilDataType | null }[] }
-  | { type: 'record'; fields: AnvilFieldType[] }
-  | { type: 'tuple'; elements: AnvilDataType[] }
-  | { type: 'opaque'; name: string }
-  | { type: 'named'; name: string; params: AnvilParamValue[] };
-
-type AnvilMessageSpecifier = {
-  endpoint: string;
-  message: string;
-};
-
-type AnvilPackType = {
-  message_specifier: AnvilMessageSpecifier;
-  data: AnvilExprNode;
-};
-
-type AnvilIndexType =
-  | { type: 'single'; index: AnvilExprNode }
-  | { type: 'range'; start: AnvilExprNode; end: AnvilExprNode };
-
-type AnvilExprNode = {
-  expression:
-  | { type: 'literal'; literal: any } // TODO
-  | { type: 'identifier'; name: string }
-  | { type: 'call'; function_name: string; arguments: AnvilExprNode[] }
-  | { type: 'assign'; lvalue: AnvilLValue; value: AnvilExprNode }
-  | { type: 'binop'; operator: string; left: AnvilExprNode; right: AnvilExprNode[] }
-  | { type: 'unop'; operator: string; operand: AnvilExprNode }
-  | { type: 'tuple'; elements: AnvilExprNode[] }
-  | { type: 'let'; identifiers: string[]; value: AnvilExprNode }
-  | { type: 'join'; first: AnvilExprNode; second: AnvilExprNode }
-  | { type: 'wait'; first: AnvilExprNode; second: AnvilExprNode }
-  | { type: 'cycle'; cycles: number }
-  | { type: 'sync'; identifier: string }
-  | { type: 'if'; condition: AnvilExprNode; then: AnvilExprNode; else: AnvilExprNode }
-  | { type: 'try_recv'; identifier: string; recv_pack: AnvilPackType; on_success: AnvilExprNode; on_failure: AnvilExprNode }
-  | { type: 'try_send'; send_pack: AnvilPackType; on_success: AnvilExprNode; on_failure: AnvilExprNode }
-  | { type: 'construct'; variant_type: string; constructor: string; value: AnvilExprNode | null }
-  | { type: 'record'; record_type: string; fields: AnvilFieldNode[]; base: AnvilExprNode | null }
-  | { type: 'index'; array: AnvilExprNode; index: AnvilIndexType }
-  | { type: 'indirect'; expression: AnvilExprNode; field: string }
-  | { type: 'concat'; elements: AnvilExprNode[] }
-  | { type: 'read'; identifier: string }
-  | { type: 'debug'; debug_op: any } // TODO debug_op
-  | { type: 'send'; send_pack: AnvilPackType }
-  | { type: 'recv'; recv_pack: AnvilPackType }
-  | { type: 'shared_assign'; identifier: string; value: AnvilExprNode }
-  | { type: 'recurse' }
-  | { type: 'list'; elements: AnvilExprNode[] }
-  | { type: 'ready'; message_specifier: { endpoint: string; message: string } }
-  | { type: 'probe'; message_specifier: { endpoint: string; message: string } };
-  span: AnvilSpan;
-}
-
-type AnvilLValue =
-  | { type: 'reg'; name: string }
-  | { type: 'indexed'; base: AnvilLValue; index: any } // TODO index
-  | { type: 'indirected'; base: AnvilLValue; field: string };
-
-type AnvilNativeProcBody = {
-  type: 'native';
-  content: {
-    channels: {
-      channel: {
-        channel_class: string;
-        channel_params: AnvilParamValue[];
-        endpoint_left: string;
-        endpoint_right: string;
-        visibility: 'both_foreign' | 'left_foreign' | 'right_foreign';
-      };
-      span: AnvilSpan;
-    }[];
-    spawns: {
-      spawn: {
-        proc: string;
-        params: string[];
-        compile_params: any[];
-      };
-      span: AnvilSpan;
-    }[];
-    regs: {
-      reg: {
-        name: string;
-        dtype: AnvilDataType;
-        init: string | null;
-      };
-      span: AnvilSpan;
-    }[];
-    shared_vars: {
-      shared_var: {
-        ident: string;
-        assigning_thread: number;
-        shared_lifetime:
-        | { type: 'cycles'; value: number }
-        | { type: 'message'; value: { endpoint: string; message: string } }
-        | { type: 'eternal' };
-      };
-      span: AnvilSpan;
-    }[];
-    threads: AnvilExprNode[];
-  };
-}
-
-type AnvilExternProcBody = {
-  type: 'extern';
-  module_name: string;
-  content: {
-    named_ports: { port_name: string; signal_name: string }[];
-    msg_ports: {
-      message_specifier: { endpoint: string; message: string };
-      data_port: string | null;
-      valid_port: string | null;
-      ack_port: string | null;
-    }[];
-  };
-}
-
-type AnvilProc = {
-  name: string;
-  args: {
-    endpoint: {
-      name: string;
-      channel_class: string;
-      channel_params: AnvilParamValue[];
-      direction: AnvilEndpointDirection;
-      foreign: boolean;
-      opposite_endpoint: string | null;
-    };
-    span: AnvilSpan;
-  }[];
-  body: AnvilNativeProcBody | AnvilExternProcBody;
-  params: AnvilParam[];
-}
-
-export type AnvilCompilationUnitNavigation = (string | number)[];
-
-export type AnvilCompilationUnit = {
+export type AnvilCompUnit = {
   file_name: string;
   channel_classes: AnvilChannelClass[];
   type_defs: AnvilType[];
   macro_defs: AnvilMacro[];
   func_defs: AnvilFunc[];
-  proc_defs: AnvilProc[];
+  procs: AnvilProc[];
   imports: {
     file_name: string;
     is_extern: boolean;
@@ -231,17 +38,37 @@ export type AnvilCompilationUnit = {
 
 export type AnvilASTOutput = {
   file_name: string;
-  compilation_unit: AnvilCompilationUnit;
+  compilation_unit: AnvilCompUnit;
 };
 
+
+export type AnvilCompUnitNav =
+  (string | number)[] &
+  { 0: keyof AnvilCompUnit } &
+  { 1?: number };
+
+export type AnvilCompUnitNavWithFilename = {
+  filename: string;
+  navigation: AnvilCompUnitNav;
+}
+
 export class AnvilAST {
+
   private data: AnvilASTOutput[];
   private filenameToIndex: { [filename: string]: number } = {};
 
   private spanToTreeNavigation: {
     [filename: string]: {
       span: AnvilSpan;
-      navigation: (string | number)[];
+      navigation: AnvilCompUnitNav;
+    }[];
+  } = {};
+
+  private identifierToTreeNavigation: {
+    [identifier: string]: {
+      filename: string;
+      span: AnvilSpan;
+      navigation: AnvilCompUnitNav;
     }[];
   } = {};
 
@@ -256,10 +83,10 @@ export class AnvilAST {
 
     for (const filename in this.spanToTreeNavigation) {
       this.spanToTreeNavigation[filename].sort((a, b) => {
-        if (a.span.start_line !== b.span.start_line) {
-          return a.span.start_line - b.span.start_line;
+        if (a.span.start.line !== b.span.start.line) {
+          return a.span.start.line - b.span.start.line;
         }
-        return a.span.start_cnum - b.span.start_cnum;
+        return a.span.start.col - b.span.start.col;
       });
     }
   }
@@ -274,10 +101,10 @@ export class AnvilAST {
    * @param span The span to find navigation for
    * @returns An array of navigation steps or null if not found
    */
-  getNavigationToSpan(filename: string, span: AnvilSpan): AnvilCompilationUnitNavigation | null {
+  getNavigationToSpan(filename: string, span: AnvilSpan): AnvilCompUnitNav | null {
     let bestMatch: {
       span: AnvilSpan;
-      navigation: AnvilCompilationUnitNavigation;
+      navigation: AnvilCompUnitNav;
     } | null = null;
 
     for (const entry of this.spanToTreeNavigation[filename] || []) {
@@ -295,8 +122,8 @@ export class AnvilAST {
         const bestSpan = bestMatch.span;
         const entrySpan = entry.span;
 
-        const bestSize = (bestSpan.end_line - bestSpan.start_line) * 1000 + (bestSpan.end_cnum - bestSpan.start_cnum);
-        const entrySize = (entrySpan.end_line - entrySpan.start_line) * 1000 + (entrySpan.end_cnum - entrySpan.start_cnum);
+        const bestSize = (bestSpan.end.line - bestSpan.start.line) * 1000 + (bestSpan.end.col - bestSpan.start.col);
+        const entrySize = (entrySpan.end.line - entrySpan.start.line) * 1000 + (entrySpan.end.col - entrySpan.start.col);
 
         if (entrySize < bestSize) {
           bestMatch = entry;
@@ -318,12 +145,10 @@ export class AnvilAST {
    * @param cnum The character number (1-based)
    * @returns An array of navigation steps or null if not found
    */
-  getNavigationToLocation(filename: string, line: number, cnum: number): AnvilCompilationUnitNavigation | null {
+  getNavigationToLocation(filename: string, line: number, col: number): AnvilCompUnitNav | null {
     return this.getNavigationToSpan(filename, {
-      start_line: line,
-      start_cnum: cnum,
-      end_line: line,
-      end_cnum: cnum,
+      start: { line, col },
+      end: { line, col },
     });
   }
 
@@ -331,43 +156,68 @@ export class AnvilAST {
    * Get the AST node at a specific navigation path.
    * @param navigation The navigation path as an array of steps
    * @param traverseUpward A function that determines whether to traverse upward in the AST. Useful for getting out of nested structures.
+   * @param requireSpannableNode If true, will traverse one level up to locate nodes with code spans.
    * @returns The AST node at the specified path or null if not found
    */
   getInfoForNavigation(
     filename: string,
     navigation: (string | number)[] | null,
-    traverseUpward: (node: any) => boolean = () => false
-  ): any | null {
+    options: Partial<{
+      traverseUpward: (node: AnvilUnknownNode | null) => boolean;
+      traverseToSpannableNode: boolean;
+    }> = {}
+  ): AnvilUnknownNode | null {
+    console.log("Getting info for navigation", filename, navigation, options);
     if (!navigation) {
+      console.log("No navigation steps provided");
       return null;
     }
 
     const fileIndex = this.filenameToIndex[filename];
     if (fileIndex === undefined) {
+      console.log("File not found in AST", filename);
       return null;
     }
 
-    let pointers: any[] = [];
-    let current: any = this.data[fileIndex].compilation_unit;
+    let pointers: AnvilUnknownNode[] = [];
+    let current: AnvilUnknownNode | null = this.data[fileIndex].compilation_unit;
 
+    console.log("Starting at compilation unit");
     for (const step of navigation) {
       if (current === undefined || current === null) {
+        console.log("Current is undefined or null", current);
         return null;
       }
+
       pointers.push(current);
-      current = current[step];
+
+      if (typeof current !== 'object' && !Array.isArray(current)) {
+        return null;
+      }
+
+      console.log("Stepping into", step);
+
+      current = (current as any)[step] as any;
     }
+
+    console.log("Final node", current);
 
     // Now current is the node at the navigation path
     // If traverseUpward is true, go up the tree until it returns false or we reach the root
-    while (traverseUpward(current) && pointers.length > 0) {
-      current = pointers.pop();
+    while ((options.traverseUpward ?? (() => false))(current) && pointers.length > 0) {
+      current = pointers.pop() || null;
+    }
+
+    if (options.traverseToSpannableNode && current) {
+      while (current && !this.isSpannableNode(current)) {
+        current = pointers.pop() || null;
+      }
     }
 
     return current;
   }
 
-  getCompilationUnit(filename: string): AnvilCompilationUnit | null {
+  getCompilationUnit(filename: string): AnvilCompUnit | null {
     const fileIndex = this.filenameToIndex[filename];
     if (fileIndex === undefined) {
       return null;
@@ -375,68 +225,56 @@ export class AnvilAST {
     return this.data[fileIndex].compilation_unit;
   }
 
-  isExprNode(node: unknown): node is AnvilExprNode {
-    return typeof node === 'object' && node !== null && (node as any).expression && (node as any).span;
+  isSpannableNode(node: AnvilUnknownNode): node is AnvilSpannable {
+    return node && typeof node.kind === 'string' && typeof node.span === 'object' && node.span;
   }
 
-  isChannelNav(filename: string, navigation: AnvilCompilationUnitNavigation): AnvilChannelClass | undefined {
-    if (this.matchNavigation(navigation, ['channel_classes', null])) {
-      return this.getInfoForNavigation(filename, navigation) as AnvilChannelClass;
-    }
-    return undefined;
+  isAstNode(node: AnvilUnknownNode): node is AnvilAstNode {
+    return node && (node.kind === "ast_node" || node.kind === "expr_node");
   }
 
-  isMessageNav(filename: string, navigation: AnvilCompilationUnitNavigation): AnvilMessage | undefined {
-    if (this.matchNavigation(navigation, ['channel_classes', null, 'messages', null])) {
-      return this.getInfoForNavigation(filename, navigation) as AnvilMessage;
-    }
-    return undefined;
+  isExprNode(node: AnvilUnknownNode): node is AnvilExpr {
+    return node && node.kind === "expr";
   }
 
-  isFieldNav(filename: string, navigation: AnvilCompilationUnitNavigation): AnvilFieldNode | undefined {
-    if (this.matchNavigation(navigation, ['channel_classes', null, 'fields', null])) {
-      return this.getInfoForNavigation(filename, navigation) as AnvilFieldNode;
-    }
-    return undefined;
+  isChannelClassNode(node: AnvilUnknownNode): node is AnvilChannelClass {
+    return node && node.kind === "channel_class_def";
   }
 
-  isEndpointNav(filename: string, navigation: AnvilCompilationUnitNavigation): AnvilProc['args'][0]['endpoint'] | undefined {
-    if (this.matchNavigation(navigation, ['proc_defs', null, 'args', null])) {
-      return this.getInfoForNavigation(filename, navigation) as AnvilProc['args'][0]['endpoint'];
-    }
-    return undefined;
+  isMessageNode(node: AnvilUnknownNode): node is AnvilMessage {
+    return node && node.kind === "message_def";
   }
 
-  isTypeNav(filename: string, navigation: AnvilCompilationUnitNavigation): AnvilType | undefined {
-    if (this.matchNavigation(navigation, ['type_defs', null])) {
-      return this.getInfoForNavigation(filename, navigation) as AnvilType;
-    }
-    return undefined;
+  isTypeNode(node: AnvilUnknownNode): node is AnvilType {
+    return node && node.kind === "type_def";
   }
 
-  isFuncNav(filename: string, navigation: AnvilCompilationUnitNavigation): AnvilFunc | undefined {
-    if (this.matchNavigation(navigation, ['func_defs', null])) {
-      return this.getInfoForNavigation(filename, navigation) as AnvilFunc;
-    }
-    return undefined;
+  isMacroNode(node: AnvilUnknownNode): node is AnvilMacro {
+    return node && node.kind === "macro_def";
   }
 
-  isProcNav(filename: string, navigation: AnvilCompilationUnitNavigation): AnvilProc | undefined {
-    if (this.matchNavigation(navigation, ['proc_defs', null])) {
-      return this.getInfoForNavigation(filename, navigation) as AnvilProc;
-    }
-    return undefined;
+  isFuncNode(node: AnvilUnknownNode): node is AnvilFunc {
+    return node && node.kind === "func_def";
   }
 
-  isMacroNav(filename: string, navigation: AnvilCompilationUnitNavigation): AnvilMacro | undefined {
-    if (this.matchNavigation(navigation, ['macro_defs', null])) {
-      return this.getInfoForNavigation(filename, navigation) as AnvilMacro;
-    }
-    return undefined;
+  isProcNode(node: AnvilUnknownNode): node is AnvilProc {
+    return node && node.kind === "proc_def";
+  }
+
+  isRegisterNode(node: AnvilUnknownNode): node is AnvilRegister {
+    return node && node.kind === "reg_def";
+  }
+
+  isEndpointNode(node: AnvilUnknownNode): node is AnvilEndpoint {
+    return node && node.kind === "endpoint_def";
+  }
+
+  isChannelNode(node: AnvilUnknownNode): node is AnvilChannel {
+    return node && node.kind === "channel_def";
   }
 
   private matchNavigation(
-    navigation: AnvilCompilationUnitNavigation | null | undefined,
+    navigation: AnvilCompUnitNav | null | undefined,
     pattern: (string | number | null)[]
   ): boolean {
 
@@ -455,119 +293,298 @@ export class AnvilAST {
     return true;
   }
 
-  navigateToDefinitionTree(filename: string, navigation: AnvilCompilationUnitNavigation): AnvilCompilationUnitNavigation[] | null {
+  private searchMatching(
+    filename: string,
+    navigation: AnvilCompUnitNav,
+    condition: (node: AnvilUnknownNode) => boolean
+  ): AnvilCompUnitNav | null {
+
+    let node = this.getInfoForNavigation(filename, navigation);
+    if (!node) {
+      return null;
+    }
+
+    if (Array.isArray(node)) {
+      for (let i = 0; i < node.length; i++) {
+        if (condition(node[i])) {
+          const copy = [...navigation];
+          copy.push(i);
+          return copy as AnvilCompUnitNav;
+        }
+        console.log("DEF Array not match for index", i, node[i]);
+      }
+    } else if (typeof node === 'object') {
+      for (const key in node) {
+        if (condition((node as any)[key])) {
+          const copy = [...navigation];
+          copy.push(key);
+          return copy as AnvilCompUnitNav;
+        }
+        console.log("DEF Key not match for", key, (node as any)[key]);
+      }
+    }
+
+    return null;
+  }
+
+  private searchFirstMatching(
+    navigations: { filename: string | null, navigation: AnvilCompUnitNav }[],
+    condition: (node: AnvilUnknownNode) => boolean
+  ): { filename: string; navigation: AnvilCompUnitNav } | null {
+
+    const filenames = Object.keys(this.filenameToIndex);
+    let results: { filename: string; navigation: AnvilCompUnitNav }[] = [];
+
+    for (const { filename, navigation } of navigations) {
+      const targetFilenames = filename ? [filename] : filenames;
+      for (const fname of targetFilenames) {
+        const result = this.searchMatching(fname, navigation, condition);
+        if (result) {
+          return { filename: fname, navigation: result };
+        }
+        console.log("DEF search not match for", fname, navigation);
+      }
+    }
+
+    return null;
+  }
+
+
+  navigateToDefinitionTree(filename: string, navigation: AnvilCompUnitNav): AnvilCompUnitNavWithFilename[] | null {
     // TODO: Implement full logic.
     // For now, we'll do basic examples:
 
-    let definitionTree: AnvilCompilationUnitNavigation[] = [];
+    let definitionTree: AnvilCompUnitNavWithFilename[] = [];
 
     const expandTree = () => {
       if (definitionTree.length === 0) return;
-      const result = this.navigateToDefinitionTree(filename, definitionTree[definitionTree.length - 1]) ?? [];
+      const tail = definitionTree[definitionTree.length - 1];
+      if (!tail) return;
+      const result = this.navigateToDefinitionTree(tail.filename, tail.navigation) ?? [];
       definitionTree.push(...result);
       return definitionTree[definitionTree.length - 1];
     }
 
-    const pushAndExpandTree = (nav: AnvilCompilationUnitNavigation) => {
+    const pushAndExpandTree = (nav: AnvilCompUnitNavWithFilename) => {
       definitionTree.push(nav);
       return expandTree();
     }
 
 
-    const node = this.getInfoForNavigation(filename, navigation);
+    let node = this.getInfoForNavigation(filename, navigation);
     if (!node) {
       return null;
     }
 
     if (this.isExprNode(node)) {
-      const expr = node.expression;
-
+      const expr = node;
       switch (expr.type) {
         case 'send':
         case 'recv':
 
-          const pack =
-            expr.type === 'send' ? expr.send_pack :
-              expr.type === 'recv' ? expr.recv_pack :
-                null;
-
+          const pack = expr.send_pack || expr.recv_pack;
           if (!pack) {
-            return null; // Pack not found! This is invalid.
+            break; // Pack not found! This is invalid.
           }
 
-          const endpointName = pack.message_specifier.endpoint;
-          const messageName = pack.message_specifier.message;
+          // Discovered endpoint
+          const endpointName = pack.msg_spec.endpoint;
+          const messageName = pack.msg_spec.msg;
 
-          console.log(`Navigating to definition of message '${messageName}' on endpoint '${endpointName}'`);
+          // Find the endpoint definition
+          let endpDef = this.searchFirstMatching(
+            [
+              {filename: filename, navigation: ["procs", navigation[1] as number, "body", "data", "channels"]}, // scoped def
+              {filename: filename, navigation: ["procs", navigation[1] as number, "args"]}, // same file def
+              {filename: null, navigation: ["procs", navigation[1] as number, "args"]} // any file def
+            ],
+            (node) =>
+              (this.isEndpointNode(node) && node.name === endpointName) ||
+              (this.isChannelNode(node) && (
+                node.endpoint_left === endpointName || node.endpoint_right === endpointName
+              ))
+          );
 
-          // Find the endpoint definition in the proc args
-          const procEndpointNodeIndex = this.getCompilationUnit(filename)
-            ?.proc_defs[navigation[1] as number]
-            ?.args
-            .findIndex(arg => arg.endpoint.name === endpointName)
-            ?? -1;
-
-          let newNavigationRoot;
-
-          if (procEndpointNodeIndex < 0) {
-            return null; // Endpoint not found! This is invalid.
+          if (!endpDef) {
+            // Not found! Give up.
+            break;
           }
 
-          console.log(`Found endpoint definition at index ${procEndpointNodeIndex}`);
-          newNavigationRoot = pushAndExpandTree([...navigation.slice(0, 2), 'args', procEndpointNodeIndex]);
-
-          const channelClassIndex = this.matchNavigation(newNavigationRoot, ['channel_classes', null]) ? newNavigationRoot?.[1] as number ?? -1 : -1;
-
-          // Find the message definition in the channel class
-          const messageIndex = this.getCompilationUnit(filename)
-            ?.channel_classes[channelClassIndex]
-            ?.messages
-            .findIndex(msg => msg.name === messageName)
-            ?? -1;
-
-          if (messageIndex >= 0) {
-            console.log(`Found message definition at index ${messageIndex}`);
-            pushAndExpandTree(['channel_classes', channelClassIndex, 'messages', messageIndex]);
+          // Success! Now expand definitions from here
+          const newDef = pushAndExpandTree(endpDef);
+          if (!newDef) {
+            break; // No subsequent definition found!
           }
+
+          // See if we have expanded and obtained the actual channel class
+          const channelClassIndex = this.matchNavigation(newDef.navigation, ['channel_classes', null]) ? newDef.navigation?.[1] as number ?? -1 : -1;
+          if (channelClassIndex < 0) {
+            break; // No valid channel class found!
+          }
+
+          const msgDefNav = this.searchMatching(newDef.filename, ['channel_classes', channelClassIndex, 'messages'], (node) => {
+            return this.isMessageNode(node) && node.name === messageName;
+          });
+
+          if (!msgDefNav) {
+            break; // No valid message found!
+          }
+
+          // Success! Now expand definitions and finalize here
+          pushAndExpandTree({ filename: newDef.filename, navigation: msgDefNav });
       }
     }
 
-    if (this.isEndpointNav(node, navigation)) {
-      // Find the channel class definition
-      const channelClassName = this.getInfoForNavigation(filename, [...navigation.slice(0, 4), 'endpoint', 'channel_class']) as string;
-      const channelClassIndex = this.getCompilationUnit(filename)
-        ?.channel_classes
-        .findIndex(cc => cc.name === channelClassName)
-        ?? -1;
+    if (this.isEndpointNode(node) || this.isChannelNode(node)) {
 
-      if (channelClassIndex >= 0) {
-        console.log(`Found channel class definition at index ${channelClassIndex}`);
-        definitionTree.push(['channel_classes', channelClassIndex]);
-        expandTree();
+      // Find the channel class definition
+      const channelClassName = node.channel_class;
+      const channelClassNav = this.searchFirstMatching(
+        [
+          { filename, navigation: ["procs", navigation[1] as number, "body", "data", "channels"] }, // scoped def
+          { filename, navigation: ["channel_classes"] }, // same file def
+          { filename: null, navigation: ["channel_classes"] } // any file def
+        ],
+        (node) =>
+          (this.isChannelClassNode(node) && node.name === channelClassName) ||
+          (this.isChannelNode(node) && node.name === channelClassName)
+      );
+
+      if (!channelClassNav) {
+        return null; // No valid channel class found!
       }
+
+      // Success! Now expand definitions from here
+      pushAndExpandTree(channelClassNav);
     }
 
     return definitionTree;
   }
 
+  lookupDefinitionForIdentifier(filename: string, identifier: string, line: number, col: number): AnvilCompUnitNavWithFilename[] {
+    console.log("DEF_ID Looking up definition for identifier", identifier, "at", { filename, line, col });
+    const validResults = this.identifierToTreeNavigation[identifier] || [];
+    if (validResults.length === 0) {
+      console.log("DEF_ID No valid results for identifier", identifier);
+      return [];
+    }
+
+    // Get closest span
+    const navigation = this.getNavigationToSpan(filename, { start: { line, col }, end: { line, col } });
+    if (!navigation) {
+      console.log("DEF_ID No navigation found for location", { filename, line, col });
+      return [];
+    }
+
+    // Filter results to those in scope
+    const inScopeResults = validResults.filter(res =>
+      this.isNavigationInScopeOf(navigation, res.navigation)
+    );
+
+    if (inScopeResults.length === 0) {
+      console.log("DEF_ID No in-scope results for identifier", identifier, "at", { filename, line, col });
+      return [];
+    }
+
+    // Prefer results in the same file
+    let preferredResults = inScopeResults.filter(res => res.filename === filename);
+    if (preferredResults.length === 0) {
+      preferredResults = inScopeResults;
+    }
+
+    // Sort by span position (deepest first, then earliest)
+    preferredResults.sort((a, b) => {
+      if (a.navigation.length !== b.navigation.length) {
+        return b.navigation.length - a.navigation.length;
+      }
+
+      if (a.span.start.line !== b.span.start.line) {
+        return a.span.start.line - b.span.start.line;
+      }
+
+      return a.span.start.col - b.span.start.col;
+    });
+
+    console.log("DEF_ID Found", preferredResults.length, "preferred results for identifier", identifier, preferredResults);
+
+    // Pick the first result as the most relevant
+    const chosen = preferredResults[0];
+    if (!chosen) {
+      return [];
+    }
+
+    // Now navigate to its definition tree
+    const defTree = this.navigateToDefinitionTree(chosen.filename, chosen.navigation);
+    if (!defTree) {
+      console.log("DEF_ID No definition tree found for", chosen);
+      return [];
+    }
+
+    console.log("DEF_ID Found definition tree for", chosen);
+    defTree.unshift({ filename: chosen.filename, navigation: chosen.navigation });
+    return defTree;
+  }
+
+  getIdentifierNavigation(identifier: string): AnvilCompUnitNavWithFilename[] {
+    return [...(this.identifierToTreeNavigation[identifier] || [])];
+  }
+
+  getIdentifiers(): string[] {
+    return Object.keys(this.identifierToTreeNavigation);
+  }
+
   private isSpanBefore(a: AnvilSpan, b: AnvilSpan): boolean {
-    if (a.end_line < b.start_line) return true;
-    if (a.end_line === b.start_line && a.end_cnum < b.start_cnum) return true;
+    if (a.end.line < b.start.line) return true;
+    if (a.end.line === b.start.line && a.end.col < b.start.col) return true;
     return false;
   }
 
   private isSpanAfter(a: AnvilSpan, b: AnvilSpan): boolean {
-    if (a.start_line > b.end_line) return true;
-    if (a.start_line === b.end_line && a.start_cnum > b.end_cnum) return true;
+    if (a.start.line > b.end.line) return true;
+    if (a.start.line === b.end.line && a.start.col > b.end.col) return true;
     return false;
   }
 
+  private isNavigationInScopeOf(navigation: AnvilCompUnitNav, scope: AnvilCompUnitNav): boolean {
+    if (scope.length <= 2) {
+      return true; // Global scope
+    }
+    if (navigation.length < scope.length) {
+      return false; // Navigation is shallower than scope
+    }
+
+    for (let i = 0; i < scope.length; i++) {
+      if (navigation[i] !== scope[i]) {
+        // Diverged! Verify if this condition is still in scope
+
+        if (navigation[i] === 'rhs' && scope[i] === 'lhs') {
+          // 'rhs' is within 'lhs' scope
+          return true;
+        }
+
+        if (navigation[i] === 'body' && i === 2) {
+          // 'body' may access other top-level items
+          return true;
+        }
+
+        console.log("Out of scope at item", i + 1, " of nav:", navigation, "scope:", scope);
+        return false;
+      }
+    }
+
+    return true; // If we made it this far, it's in scope
+  }
+
   private traverseAST(filename: string, node: unknown, path: (string | number)[] = []) {
+    if (node === null || node === undefined) {
+      return;
+    }
+
     if (typeof (node as any).span === 'object' && (node as any).span) {
       const arr = this.spanToTreeNavigation[filename] || []
       this.spanToTreeNavigation[filename] = arr;
 
-      arr.push({ span: (node as any).span, navigation: path });
+      arr.push({ span: (node as any).span, navigation: path as AnvilCompUnitNav });
     }
 
     if (Array.isArray(node)) {
@@ -576,6 +593,19 @@ export class AnvilAST {
     }
 
     if (typeof node === 'object') {
+      // If it's an AST node (type: "ast_node" or "expr_node"), flatten the "data" field
+
+      if (node && this.isAstNode(node)) {
+        const data = node.data;
+        if (typeof data === 'object' && data) {
+          delete node.data;
+          for (const key in data) {
+            // Copy all fields from data to node
+            (node as any)[key] = (data as any)[key];
+          }
+        }
+      }
+
       for (const key in node) {
         const value = (node as any)[key];
 
@@ -584,7 +614,33 @@ export class AnvilAST {
           this.traverseAST(filename, value, [...path, key]);
         }
       }
-      return;
+    }
+
+    if (typeof node === 'object') {
+      // if it has an identifier, map it
+      const identifiers = [];
+
+      const anyNode = node as any;
+      if (anyNode.name) {
+        identifiers.push(anyNode.name);
+      }
+      if (anyNode.id) {
+        identifiers.push(anyNode.identifier);
+      }
+      if (anyNode.ids) {
+        identifiers.push(...anyNode.ids);
+      }
+
+      for (const id of identifiers) {
+        if (typeof id === 'string') {
+          const arr = this.identifierToTreeNavigation[id] || [];
+          this.identifierToTreeNavigation[id] = arr;
+
+          arr.push({ filename, span: anyNode.span, navigation: path as AnvilCompUnitNav });
+
+          console.log("Mapped identifier", id, "to", { filename, navigation: path });
+        }
+      }
     }
   }
 
