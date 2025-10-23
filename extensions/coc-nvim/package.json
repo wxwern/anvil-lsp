@@ -14,7 +14,8 @@
   "scripts": {
     "watch": "concurrently 'node esbuild.mjs --watch' 'cd server && npm run watch -- --preserveWatchOutput'",
     "build": "node esbuild.mjs && cd server && npm run build",
-    "prepare": "node esbuild.mjs"
+    "prepare": "node esbuild.mjs",
+    "postinstall": "cd server && npm install"
   },
   "devDependencies": {
     "coc.nvim": "^0.0.83-next.18",
