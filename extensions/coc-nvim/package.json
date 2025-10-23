@@ -1,0 +1,54 @@
+{
+  "name": "coc-anvil",
+  "version": "0.0.0-development",
+  "description": "Anvil Language Server coc.nvim extension",
+  "author": "Wern Lim <dev@wern.cc>",
+  "license": "MIT",
+  "main": "out/index.js",
+  "keywords": [
+    "coc.nvim"
+  ],
+  "engines": {
+    "coc": "^0.0.82"
+  },
+  "scripts": {
+    "watch": "concurrently 'node esbuild.mjs --watch' 'cd server && npm run watch -- --preserveWatchOutput'",
+    "build": "node esbuild.mjs && cd server && npm run build",
+    "prepare": "node esbuild.mjs"
+  },
+  "devDependencies": {
+    "coc.nvim": "^0.0.83-next.18",
+    "esbuild": "^0.25.11",
+    "concurrently": "^7.6.0",
+    "typescript": "^5.3.3"
+  },
+  "activationEvents": [
+    "*"
+  ],
+  "contributes": {
+    "configuration": {
+      "type": "object",
+      "title": "coc-anvil configuration",
+        "properties": {
+          "anvil.maxNumberOfProblems": {
+            "scope": "resource",
+            "type": "number",
+            "default": 100,
+            "description": "Controls the maximum number of problems produced by the server."
+          },
+          "anvil.projectRoot": {
+            "scope": "resource",
+            "type": "string",
+            "default": "",
+            "description": "Controls the project root path. Defaults to the workspace root."
+          },
+          "anvil.executablePath": {
+            "scope": "resource",
+            "type": "string",
+            "default": "",
+            "description": "Path to the Anvil compiler binary. Defaults to 'anvil' in your PATH."
+          }
+        }
+    }
+  }
+}

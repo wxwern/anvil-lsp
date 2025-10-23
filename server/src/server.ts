@@ -99,7 +99,7 @@ connection.onInitialized(() => {
 interface AnvilServerSettings {
 	maxNumberOfProblems: number;
 	projectRoot?: string;
-	anvilBinaryPath?: string;
+	executablePath?: string;
 	debug?: boolean;
 }
 
@@ -127,7 +127,7 @@ connection.onDidChangeConfiguration(change => {
 		documentSettings.clear();
 	} else {
 		globalSettings = (
-			(change.settings.anvilLanguageServer || defaultSettings)
+			(change.settings['anvil'] || globalSettings)
 		);
 	}
 	// Refresh the diagnostics since the `maxNumberOfProblems` could have changed.
@@ -144,7 +144,7 @@ function getDocumentSettings(resource: string): Thenable<AnvilServerSettings> {
 	if (!result) {
 		result = connection.workspace.getConfiguration({
 			scopeUri: resource,
-			section: 'anvilLanguageServer'
+			section: 'anvil'
 		});
 		documentSettings.set(resource, result);
 	}
@@ -297,7 +297,7 @@ async function validateTextDocument(textDocument: TextDocument): Promise<Diagnos
 
 			const settings = await getDocumentSettings(textDocument.uri);
 
-			const compiler = new AnvilCompiler(settings.projectRoot, settings.anvilBinaryPath);
+			const compiler = new AnvilCompiler(settings.projectRoot, settings.executablePath);
 			const filePath = textDocument.uri.replace('file://', '');
 			const fileData = { [filePath]: textDocument.getText() };
 

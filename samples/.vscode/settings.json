@@ -1,4 +1,4 @@
 {
-    "anvilLanguageServer.anvilBinaryPath": "../bin/anvil",
-    "anvilLanguageServer.debug": true,
+    "anvil.anvilBinaryPath": "../bin/anvil",
+    "anvil.debug": true
 }

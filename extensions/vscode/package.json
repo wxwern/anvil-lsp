@@ -1,14 +1,13 @@
 {
-	"name": "lsp-sample",
-	"description": "A language server example",
-	"author": "Microsoft Corporation",
+	"name": "anvil-vscode-lsp-extension",
+	"description": "Anvil Language Server VS Code Extension",
+	"author": "Wern Lim",
 	"license": "MIT",
 	"version": "1.0.0",
 	"repository": {
 		"type": "git",
 		"url": "https://github.com/Microsoft/vscode-extension-samples"
 	},
-	"publisher": "vscode-samples",
 	"categories": [],
 	"keywords": [
 		"multi-root ready"
@@ -38,25 +37,25 @@
 			"type": "object",
 			"title": "Anvil Language Server Configuration",
 			"properties": {
-				"anvilLanguageServer.maxNumberOfProblems": {
+				"anvil.maxNumberOfProblems": {
 					"scope": "resource",
 					"type": "number",
 					"default": 100,
 					"description": "Controls the maximum number of problems produced by the server."
 				},
-				"anvilLanguageServer.projectRoot": {
+				"anvil.projectRoot": {
 					"scope": "resource",
 					"type": "string",
 					"default": "",
 					"description": "Controls the project root path. Defaults to the workspace root."
 				},
-				"anvilLanguageServer.anvilBinaryPath": {
+				"anvil.executablePath": {
 					"scope": "resource",
 					"type": "string",
 					"default": "",
 					"description": "Path to the Anvil compiler binary. Defaults to 'anvil' in your PATH."
 				},
-				"anvilLanguageServer.trace.server": {
+				"anvil.trace.server": {
 					"scope": "window",
 					"type": "string",
 					"enum": [
@@ -71,8 +70,8 @@
 		}
 	},
 	"scripts": {
-		"vscode:prepublish": "npm run compile",
-		"compile": "tsc -b",
+		"vscode:prepublish": "npm run build",
+		"build": "tsc -b",
 		"watch": "tsc -b -w",
 		"lint": "eslint",
 		"postinstall": "cd client && npm install && cd ../server && npm install && cd .."

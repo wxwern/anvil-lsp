@@ -1,9 +1,9 @@
 {
-	"name": "lsp-sample-server",
-	"description": "Example implementation of a language server in node.",
-	"version": "1.0.0",
-	"author": "Microsoft Corporation",
+	"name": "anvil-lsp-server",
+	"description": "Anvil Language Server",
+	"author": "Wern Lim",
 	"license": "MIT",
+	"version": "1.0.0",
 	"engines": {
 		"node": "*"
 	},
@@ -15,5 +15,14 @@
 		"vscode-languageserver": "^9.0.1",
 		"vscode-languageserver-textdocument": "^1.0.11"
 	},
-	"scripts": {}
+	"scripts": {
+		"build": "tsc -b",
+		"watch": "tsc -b -w",
+		"lint": "eslint"
+	},
+	"devDependencies": {
+		"typescript": "^5.9.2",
+		"typescript-eslint": "^8.39.0",
+		"@types/node": "^22"
+	}
 }
