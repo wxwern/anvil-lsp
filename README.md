@@ -1,6 +1,6 @@
 # anvil-lsp
 
-[Anvil](https://github.com/jasonyu1996/anvil) Language Server Protocol (LSP) implementation, including prepared extensions for supported editors.
+[Anvil](https://github.com/jasonyu1996/anvil) [Language Server Protocol (LSP)](https://microsoft.github.io/language-server-protocol/) implementation, including prepared extensions for supported editors.
 
 
 ## Supported Features
