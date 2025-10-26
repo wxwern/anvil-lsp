@@ -1,96 +1,92 @@
 {
-	"name": "anvil-vscode-lsp-extension",
-	"description": "Anvil Language Server VS Code Extension",
-	"author": "Wern Lim",
-	"license": "MIT",
-	"version": "1.0.0",
-	"repository": {
-		"type": "git",
-		"url": "https://github.com/Microsoft/vscode-extension-samples"
-	},
-	"categories": [],
-	"keywords": [
-		"multi-root ready"
-	],
-	"engines": {
-		"vscode": "^1.100.0"
-	},
-	"main": "./client/out/extension",
-	"contributes": {
-		"languages": [
-			{
-				"id": "anvil",
-				"aliases": [
-					"Anvil",
-					"anvil",
-					"AnvilHDL",
-					"Anvil HDL",
-					"anvil-hdl"
-				],
-				"extensions": [
-					".anvil"
-				],
-				"configuration": "./anvil.configuration.json"
-			}
-		],
-		"configuration": {
-			"type": "object",
-			"title": "Anvil Language Server Configuration",
-			"properties": {
-				"anvil.maxNumberOfProblems": {
-					"scope": "resource",
-					"type": "number",
-					"default": 100,
-					"description": "Controls the maximum number of problems produced by the server."
-				},
-				"anvil.projectRoot": {
-					"scope": "resource",
-					"type": "string",
-					"default": "",
-					"description": "Controls the project root path. Defaults to the workspace root."
-				},
-				"anvil.executablePath": {
-					"scope": "resource",
-					"type": "string",
-					"default": "",
-					"description": "Path to the Anvil compiler binary. Defaults to 'anvil' in your PATH."
-				},
-				"anvil.trace.server": {
-					"scope": "window",
-					"type": "string",
-					"enum": [
-						"off",
-						"messages",
-						"verbose"
-					],
-					"default": "off",
-					"description": "Traces the communication between VS Code and the language server."
-				}
-			}
-		},
-		"grammars": [
-			{
-				"language": "anvil",
-				"scopeName": "source.anvil",
-				"path": "./grammar.json"
-			}
-		]
-	},
-	"scripts": {
-		"vscode:prepublish": "npm run build",
-		"build": "tsc -b",
-		"watch": "tsc -b -w",
-		"lint": "eslint",
-		"postinstall": "cd client && npm install && cd ../server && npm install && cd .."
-	},
-	"devDependencies": {
-		"@eslint/js": "^9.13.0",
-		"@stylistic/eslint-plugin": "^2.9.0",
-		"@types/mocha": "^10.0.6",
-		"@types/node": "^22",
-		"eslint": "^9.13.0",
-		"mocha": "^10.3.0",
-		"typescript": "^5.9.2",
-		"typescript-eslint": "^8.39.0"
-	}
+  "name": "anvil-lsp-vscode-extension",
+  "version": "0.0.0-development",
+  "description": "Anvil Language Server VS Code Extension",
+  "author": "Wern Lim <dev@wern.cc>",
+  "license": "MIT",
+  "main": "./client/out/extension",
+  "categories": [],
+  "keywords": [
+    "multi-root ready"
+  ],
+  "engines": {
+    "vscode": "^1.100.0"
+  },
+  "contributes": {
+    "languages": [
+      {
+        "id": "anvil",
+        "aliases": [
+          "Anvil",
+          "anvil",
+          "AnvilHDL",
+          "Anvil HDL",
+          "anvil-hdl"
+        ],
+        "extensions": [
+          ".anvil"
+        ],
+        "configuration": "./anvil.configuration.json"
+      }
+    ],
+    "configuration": {
+      "type": "object",
+      "title": "Anvil Language Server Configuration",
+      "properties": {
+        "anvil.maxNumberOfProblems": {
+          "scope": "resource",
+          "type": "number",
+          "default": 100,
+          "description": "Controls the maximum number of problems produced by the server."
+        },
+        "anvil.projectRoot": {
+          "scope": "resource",
+          "type": "string",
+          "default": "",
+          "description": "Controls the project root path. Defaults to the workspace root."
+        },
+        "anvil.executablePath": {
+          "scope": "resource",
+          "type": "string",
+          "default": "",
+          "description": "Path to the Anvil compiler binary. Defaults to 'anvil' in your PATH."
+        },
+        "anvil.trace.server": {
+          "scope": "window",
+          "type": "string",
+          "enum": [
+            "off",
+            "messages",
+            "verbose"
+          ],
+          "default": "off",
+          "description": "Traces the communication between VS Code and the language server."
+        }
+      }
+    },
+    "grammars": [
+      {
+        "language": "anvil",
+        "scopeName": "source.anvil",
+        "path": "./grammar.json"
+      }
+    ]
+  },
+  "scripts": {
+    "vscode:prepublish": "npm run build",
+    "build": "tsc -b",
+    "watch": "tsc -b -w",
+    "lint": "eslint",
+    "postinstall": "cd client && npm install && cd ../server && npm install && cd .."
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.13.0",
+    "@stylistic/eslint-plugin": "^2.9.0",
+    "@types/mocha": "^10.0.6",
+    "@types/node": "^22",
+    "eslint": "^9.13.0",
+    "mocha": "^10.3.0",
+    "typescript": "^5.9.2",
+    "typescript-eslint": "^8.39.0"
+  }
 }

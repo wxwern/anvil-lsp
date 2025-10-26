@@ -1,10 +1,10 @@
 {
-  "name": "coc-anvil",
+  "name": "anvil-coc-nvim-extension",
   "version": "0.0.0-development",
-  "description": "Anvil Language Server coc.nvim extension",
+  "description": "Anvil Language Server coc.nvim Extension",
   "author": "Wern Lim <dev@wern.cc>",
   "license": "MIT",
-  "main": "out/index.js",
+  "main": "./out/index.js",
   "keywords": [
     "coc.nvim"
   ],
