@@ -67,7 +67,14 @@
 					"description": "Traces the communication between VS Code and the language server."
 				}
 			}
-		}
+		},
+		"grammars": [
+			{
+				"language": "anvil",
+				"scopeName": "source.anvil",
+				"path": "./grammar.json"
+			}
+		]
 	},
 	"scripts": {
 		"vscode:prepublish": "npm run build",
