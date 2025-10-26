@@ -5,7 +5,7 @@ export type AnvilSpan = {
 };
 
 export type AnvilUnknownNode = { [key: string]: any; };
-export type AnvilSpannable = { kind: string; span: AnvilSpan; };
+export type AnvilSpannable = { kind: string; span: AnvilSpan; def_span?: AnvilSpan[] };
 export type AnvilSpannableData = AnvilSpannable & { data?: any };
 
 export type AnvilChannelClass = { kind: 'channel_class_def' } & AnvilSpannable & AnvilUnknownNode;
@@ -44,7 +44,7 @@ export type AnvilASTOutput = {
 
 export type AnvilCompUnitNav =
   (string | number)[] &
-  { 0: keyof AnvilCompUnit } &
+  { 0?: keyof AnvilCompUnit } &
   { 1?: number };
 
 export type AnvilCompUnitNavWithFilename = {
@@ -60,6 +60,7 @@ export class AnvilAST {
   private spanToTreeNavigation: {
     [filename: string]: {
       span: AnvilSpan;
+      def_span?: AnvilSpan[];
       navigation: AnvilCompUnitNav;
     }[];
   } = {};
@@ -68,6 +69,7 @@ export class AnvilAST {
     [identifier: string]: {
       filename: string;
       span: AnvilSpan;
+      def_span?: AnvilSpan[];
       navigation: AnvilCompUnitNav;
     }[];
   } = {};
@@ -99,15 +101,26 @@ export class AnvilAST {
   /**
    * Get the navigation path to a specific span.
    * @param span The span to find navigation for
+   * @param exact If true, requires an exact match of the span
    * @returns An array of navigation steps or null if not found
    */
-  getNavigationToSpan(filename: string, span: AnvilSpan): AnvilCompUnitNav | null {
+  getNavigationToSpan(filename: string, span: AnvilSpan, exact: boolean = false): AnvilCompUnitNav | null {
     let bestMatch: {
       span: AnvilSpan;
       navigation: AnvilCompUnitNav;
     } | null = null;
 
     for (const entry of this.spanToTreeNavigation[filename] || []) {
+
+      if (exact && (
+          entry.span.start.line !== span.start.line ||
+          entry.span.start.col !== span.start.col ||
+          entry.span.end.line !== span.end.line ||
+          entry.span.end.col !== span.end.col
+      )) {
+         continue;
+      }
+
       if (this.isSpanBefore(entry.span, span)) { continue; }
       if (this.isSpanAfter(entry.span, span)) { continue; }
 
@@ -378,6 +391,7 @@ export class AnvilAST {
 
     if (this.isExprNode(node)) {
       const expr = node;
+
       switch (expr.type) {
         case 'send':
         case 'recv':
@@ -458,6 +472,18 @@ export class AnvilAST {
       pushAndExpandTree(channelClassNav);
     }
 
+    // Find the definition at the declared span
+    const declaredDefSpans = this.isSpannableNode(node) ? node.def_span || [] : [];
+
+    for (const defSpan of declaredDefSpans) {
+      console.log("DEF Looking up declared def span", defSpan, "in", filename);
+      const defNav = this.getNavigationToSpan(filename, defSpan, true);
+      if (defNav) {
+        // Success! Now expand definitions from here
+        pushAndExpandTree({ filename, navigation: defNav });
+      }
+    }
+
     return definitionTree;
   }
 
@@ -525,6 +551,47 @@ export class AnvilAST {
     return defTree;
   }
 
+
+  /**
+   * Searches for all references to a specific span within the AST.
+   * @param navigation The navigation to search for references from.
+   * @returns An array of navigation paths that reference the specified span.
+   */
+  findReferencesToNavigation(filename: string, navigation: AnvilCompUnitNav): AnvilCompUnitNavWithFilename[] {
+    let item = this.getInfoForNavigation(filename, navigation);
+
+    if (!item || !this.isSpannableNode(item)) {
+      return [];
+    }
+
+    const targetSpans = [...(item.def_span || [item.span])];
+    if (!targetSpans) {
+      return [];
+    }
+
+    let references: AnvilCompUnitNavWithFilename[] = [];
+
+    for (const entry of this.spanToTreeNavigation[filename] || []) {
+      const aa = [...(entry.def_span || [])]
+      aa.push(entry.span);
+
+      const bb = targetSpans;
+
+      if (!aa.some(a => bb.some(b =>
+        a.start.line === b.start.line &&
+        a.start.col === b.start.col &&
+        a.end.line === b.end.line &&
+        a.end.col === b.end.col
+      ))) {
+        continue;
+      }
+
+      references.push({ filename: filename, navigation: entry.navigation });
+    }
+
+    return references;
+  }
+
   getIdentifierNavigation(identifier: string): AnvilCompUnitNavWithFilename[] {
     return [...(this.identifierToTreeNavigation[identifier] || [])];
   }
@@ -584,7 +651,7 @@ export class AnvilAST {
       const arr = this.spanToTreeNavigation[filename] || []
       this.spanToTreeNavigation[filename] = arr;
 
-      arr.push({ span: (node as any).span, navigation: path as AnvilCompUnitNav });
+      arr.push({ span: (node as any).span, def_span: (node as any).def_span, navigation: path as AnvilCompUnitNav });
     }
 
     if (Array.isArray(node)) {
@@ -636,7 +703,7 @@ export class AnvilAST {
           const arr = this.identifierToTreeNavigation[id] || [];
           this.identifierToTreeNavigation[id] = arr;
 
-          arr.push({ filename, span: anyNode.span, navigation: path as AnvilCompUnitNav });
+          arr.push({ filename, span: anyNode.span, def_span: anyNode.def_span, navigation: path as AnvilCompUnitNav });
 
           console.log("Mapped identifier", id, "to", { filename, navigation: path });
         }

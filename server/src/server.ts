@@ -70,6 +70,7 @@ connection.onInitialize((params: InitializeParams) => {
 				workspaceDiagnostics: false
 			},
 			definitionProvider: true,
+			referencesProvider: true,
 			hoverProvider: true
 		}
 	};
@@ -525,6 +526,54 @@ connection.onDefinition(_event => {
 	}).filter(loc => !!loc);
 });
 
+connection.onReferences(_event => {
+	console.log('References event received');
+
+	const uri = _event.textDocument.uri;
+	const document = documents.get(uri);
+	const ast = globalCompileResultCache[uri]?.ast;
+	console.log(`AST available: ${!!ast}`);
+
+	if (!document || !ast) {
+		return null;
+	}
+
+	const position = _event.position;
+	const offset = document.offsetAt(position);
+	const path = uri.replace('file://', '');
+	const navigation = ast.getNavigationToLocation(path, position.line + 1, position.character + 1);
+	if (!navigation) {
+		console.log(`No navigation found`);
+		return null;
+	}
+	console.log(`Navigation found: ${navigation.length} path components`);
+	console.log(navigation);
+	const references = ast.findReferencesToNavigation(path, navigation);
+	if (!references || references.length == 0) {
+		console.log(`No references found`);
+		return null;
+	}
+
+	console.log(`References found: ${references.length} locations`);
+	return references.map(ref => {
+		const filename = ref.filename;
+		const info = ast.getInfoForNavigation(filename, ref.navigation);
+		const span = info?.span;
+
+		if (span) {
+			return {
+				uri: 'file://' + filename,
+				range: {
+					start: { line: span.start.line - 1, character: span.start.col },
+					end: { line: span.end.line - 1, character: span.end.col }
+				}
+			};
+		}
+
+		return null;
+	}).filter(loc => !!loc);
+});
+
 // This handler provides the initial list of the completion items.
 connection.onCompletion(
 	(_textDocumentPosition: TextDocumentPositionParams): CompletionItem[] => {
@@ -635,6 +684,8 @@ connection.onCompletion(
 			'send',
 			'recv',
 			'cycle',
+			'match',
+			'import',
 		].map((label) => {
 			return {
 				label: label,
@@ -643,6 +694,21 @@ connection.onCompletion(
 				detail: '(anvil keyword)'
 			};
 		}));
+
+		completionItems.push(...[
+			['>>', 'wait', 'wait for evaluation of lhs before evaluating rhs'],
+			[':=', 'assign', 'assign rhs value to lhs'],
+			[';', 'join', 'evaluate lhs and rhs simulataneously'],
+		].map(([label, kindStr, detail]) => {
+			let kind: CompletionItemKind = CompletionItemKind.Operator;
+			return {
+				label: '(' + kindStr + ')',
+				kind: kind,
+				data: label,
+				detail: '(' + kindStr + '): ' + detail,
+			};
+		}));
+
 
 		completionItems.push(...(ast?.getIdentifiers().map((id) => {
 			let kind: CompletionItemKind = CompletionItemKind.Text;
@@ -658,12 +724,12 @@ connection.onCompletion(
 
 					case 'reg_def':
 						kind = CompletionItemKind.Variable;
-						desc = `(reg)`;
+						desc = `(register)`;
 						break;
 
 					case 'channel_class_def':
 						kind = CompletionItemKind.Class;
-						desc = `(chan)`;
+						desc = `(channel)`;
 						break;
 
 					case 'struct_def':
@@ -673,12 +739,12 @@ connection.onCompletion(
 
 					case 'func_def':
 						kind = CompletionItemKind.Function;
-						desc = `(func)`;
+						desc = `(function)`;
 						break;
 
 					case 'proc_def':
 						kind = CompletionItemKind.Module;
-						desc = `(proc)`;
+						desc = `(process)`;
 						break;
 
 					case 'macro_def':
