@@ -504,7 +504,7 @@ export class AnvilAST {
 
     // Filter results to those in scope
     const inScopeResults = validResults.filter(res =>
-      this.isNavigationInScopeOf(navigation, res.navigation)
+      this.isNavigationInScopeOf(navigation, res.navigation) || true /* TODO: fix scope checking */
     );
 
     if (inScopeResults.length === 0) {

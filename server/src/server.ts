@@ -63,7 +63,11 @@ connection.onInitialize((params: InitializeParams) => {
 			textDocumentSync: TextDocumentSyncKind.Incremental,
 			// Tell the client that this server supports code completion.
 			completionProvider: {
-				resolveProvider: true
+				resolveProvider: true,
+				// triggers
+				triggerCharacters: [
+					'.', '*'
+				]
 			},
 			diagnosticProvider: {
 				interFileDependencies: false,
@@ -307,11 +311,11 @@ async function validateTextDocument(textDocument: TextDocument): Promise<Diagnos
 
 		const prevAst = globalCompileResultCache[textDocument.uri]?.ast;
 
-		globalCompileResultCache[textDocument.uri] = result;
-
 		if (!result || !result.ast) {
 			result.ast = prevAst;
 		}
+
+		globalCompileResultCache[textDocument.uri] = result;
 
 		return result;
 	})();
@@ -587,25 +591,32 @@ connection.onCompletion(
 		const ast = globalCompileResultCache[textDocument.uri]?.ast;
 
 		// Resolve text before the cursor.
-		let characters = [];
-		let l = _textDocumentPosition.position.line;
-		let c = _textDocumentPosition.position.character - 1;
-		while (c > 0 && (characters.length === 0 || characters[characters.length - 1]?.match(/[a-zA-Z0-9_\.]/))) {
-			characters.push(textDocument?.getText({
-				start: { line: l, character: c },
-				end: { line: l, character: c + 1 }
-			}));
-			c--;
-		}
-		characters.reverse();
-		const textBeforeCursor = characters.join('');
+		const textBeforeCursor = textDocument.getText({
+			start: { line: _textDocumentPosition.position.line, character: 0 },
+			end: _textDocumentPosition.position
+		});
 
 		console.log(`Completion event received. Text before cursor: "${textBeforeCursor}"`);
 
-		const identifierMatch = textBeforeCursor.match(/([a-zA-Z0-9_]+\.)+([a-zA-Z0-9_])?$/);
+		const astLine = _textDocumentPosition.position.line + 1;
+		const astCol = _textDocumentPosition.position.character;
 
-		if (identifierMatch) {
-			const components = identifierMatch[0].split('.');
+		let completionItems: CompletionItem[] = []
+		let allowAnvilKeywords = true;
+
+		//
+		// HEURISTIC: Dot-notation completion
+		//
+
+		const dotTokenSetBeforeCursor = textBeforeCursor.match(/(^|^.+\s)(([a-zA-Z0-9_]+\.)+[a-zA-Z0-9_]*)$/);
+
+		if (dotTokenSetBeforeCursor) {
+			const nonApplicableLeadingStr = dotTokenSetBeforeCursor[1].trim();
+			const components = dotTokenSetBeforeCursor[2].split('.');
+
+			console.log(`Dot-notation completion triggered.`);
+			console.log(`  Non-applicable leading string: "${nonApplicableLeadingStr}"`);
+			console.log(`  Dot-separated components: ${components.join(' > ')}`);
 
 			const trailingComponent = components.pop() || '';
 			const leadingComponents = components;
@@ -617,106 +628,113 @@ connection.onCompletion(
 			// TODO: we only do 1 for now
 
 			if (leadingComponents.length > 0) {
-				const compDef = ast?.lookupDefinitionForIdentifier(filename, leadingComponents[0], _textDocumentPosition.position.line + 1, _textDocumentPosition.position.character);
-				if (!compDef || compDef.length == 0) {
+
+				// Attempt to resolve leading component
+				const compDefNav = ast?.lookupDefinitionForIdentifier(filename, leadingComponents[0], astLine, astCol);
+				if (!compDefNav || compDefNav.length == 0) {
 					console.log(`  Could not resolve leading component ${leadingComponents[0]} to a type`);
 					return [];
 				}
 
-				console.log("TREE", compDef);
+				let compDefInfo = ast?.getInfoForNavigation(compDefNav[0].filename, compDefNav[0].navigation);
+				if (!compDefInfo) {
+					console.log(`  Could not get info for leading component ${leadingComponents[0]}`);
+					return [];
+				}
 
-				let compDefInfo = ast?.getInfoForNavigation(compDef[0].filename, compDef[0].navigation);
-				if (compDefInfo && ast?.isEndpointNode(compDefInfo)) {
-					console.log(`  Leading component ${leadingComponents[0]} is a register of type ${compDefInfo.name}`);
+				// Check if it's an endpoint
+				if (ast?.isEndpointNode(compDefInfo)) {
+					console.log(`  Leading component ${leadingComponents[0]} is endpoint of type ${compDefInfo.name}`);
 
-					const channelClassDefNav = compDef.find(def => def.navigation[0] === 'channel_classes');
+					const channelClassDefNav = compDefNav.find(def => def.navigation[0] === 'channel_classes');
 					if (!channelClassDefNav) {
-						console.log(`  Could not find channel class definition for register type ${compDefInfo.name}`);
+						// No channel class found
 						return [];
 					}
 
 					const ccDefInfo = ast?.getInfoForNavigation(channelClassDefNav.filename, channelClassDefNav.navigation);
 					if (!ccDefInfo || !ast?.isChannelClassNode(ccDefInfo)) {
-						console.log(`  Channel class definition for register type ${compDefInfo.name} is not a channel`);
+						// Unexpectedly not a channel class
 						return [];
 					}
 
-					let results = [];
+					let prefixedDir = nonApplicableLeadingStr.match(/\b(send|recv)\b$/)?.[1] || null;
 
-					for (let msg of ccDefInfo.messages) {
+					for (let msgI = 0; msgI < ccDefInfo.messages.length; msgI++) {
+						const msg = ccDefInfo.messages[msgI];
+
 						console.log(`  Channel class ${compDefInfo.name} has message ${msg.name}`);
-						if (msg.name.startsWith(trailingComponent)) {
-							const t = compDefInfo.dir === "left" ? (msg.dir === "in" ? "recv" : "send") : (msg.dir === "in" ? "recv" : "send");
-							results.push({
-								label: msg.name,
-								kind: t === "send" ? CompletionItemKind.Function : CompletionItemKind.Value,
-								data: compDef,
-								detail: `${compDefInfo.name} (${t})`,
-							});
+
+						if (!msg.name.startsWith(trailingComponent)) {
+							// Not a prefix match
+							continue;
 						}
+
+						const dir = ((compDefInfo.dir === "left") !== (msg.dir === "in")) ? "send" : "recv";
+
+						if (prefixedDir && prefixedDir !== dir) {
+							// Not a direction match
+							continue;
+						}
+
+						const nav = channelClassDefNav.navigation.concat(['messages', msgI]);
+
+						completionItems.push({
+							label: msg.name,
+							kind: dir === "send" ? CompletionItemKind.Function : CompletionItemKind.Value,
+							data: { filename: channelClassDefNav.filename, navigation: nav },
+							detail: `${compDefInfo.name} (${dir})`,
+						});
 					}
 
-					return results;
+					return completionItems;
 				}
 			}
-
-			return [];
 		}
 
-		let completionItems: CompletionItem[] = []
+		//
+		// HEURISTIC: register read with prefix *
+		//
+		if (textBeforeCursor.match(/(^|[\s\(\[{])\*[a-zA-Z0-9_]*$/)) {
+			console.log(`Register read completion triggered.`);
 
-		completionItems.push(...[
-			'reg',
-			'struct',
-			'chan',
-			'proc',
-			'left',
-			'right',
-			'spawn',
-			'type',
-			'send',
-			'recv',
-			'if',
-			'else',
-			'loop',
-			'let',
-			'set',
-			'send',
-			'recv',
-			'cycle',
-			'match',
-			'import',
-		].map((label) => {
-			return {
-				label: label,
-				kind: CompletionItemKind.Keyword,
-				data: label,
-				detail: '(anvil keyword)'
-			};
-		}));
+			const identifierPrefix = textBeforeCursor.match(/\*([a-zA-Z0-9_]*)$/)?.[1] || '';
+			console.log(`  Identifier prefix: "${identifierPrefix}"`);
 
-		completionItems.push(...[
-			['>>', 'wait', 'wait for evaluation of lhs before evaluating rhs'],
-			[':=', 'assign', 'assign rhs value to lhs'],
-			[';', 'join', 'evaluate lhs and rhs simulataneously'],
-		].map(([label, kindStr, detail]) => {
-			let kind: CompletionItemKind = CompletionItemKind.Operator;
-			return {
-				label: '(' + kindStr + ')',
-				kind: kind,
-				data: label,
-				detail: '(' + kindStr + '): ' + detail,
-			};
-		}));
+			// Suggest all registers
+			completionItems.push(
+				...(ast?.getIdentifiers()
+					.filter(id => id.startsWith(identifierPrefix))
+					.map((id) => {
+
+						// Obtain register definition
+						const def = ast?.getIdentifierNavigation(id)?.[0];
+						const info = def ? ast?.getInfoForNavigation(def.filename, def.navigation) : null;
+						if (info?.kind !== 'reg_def') return null;
+
+						// Return completion item
+						return {
+							label: id,
+							kind: CompletionItemKind.Variable,
+							data: id,
+							detail: `(register)`
+						};
+					})
+					.filter(item => item !== null)
+				) || []
+			);
+
+			return completionItems;
+		}
 
 
 		completionItems.push(...(ast?.getIdentifiers().map((id) => {
 			let kind: CompletionItemKind = CompletionItemKind.Text;
 			let desc: string | undefined = undefined;
 
-			const def = ast?.getIdentifierNavigation(id)?.[0];
-			if (def) {
-				const info = ast?.getInfoForNavigation(def.filename, def.navigation);
+			const defNav = ast?.getIdentifierNavigation(id)?.[0];
+			if (defNav) {
+				const info = ast?.getInfoForNavigation(defNav.filename, defNav.navigation);
 				switch (info?.kind) {
 					case 'expr':
 						kind = CompletionItemKind.Variable;
@@ -767,10 +785,75 @@ connection.onCompletion(
 			return {
 				label: id,
 				kind: kind,
-				data: id,
+				data: defNav,
 				detail: desc
 			};
 		}) ?? []));
+
+
+		//
+		// Anvil keywords
+		//
+		if (allowAnvilKeywords) {
+			/*
+			syn keyword anvilType logic int dyn
+syn keyword anvilStorageModifier left right extern
+syn keyword anvilOtherModifier shared assigned\ by import generate generate_seq
+
+" Declaration keywords and names
+syn keyword anvilDeclaration struct enum proc spawn type func const reg chan
+
+syn keyword anvilControl call loop recursive if else try recurse recv send dprint dfinish set cycle sync match put ready in probe
+syn keyword anvilOtherKeywords with let
+			 */
+
+			const populateKeywords = (labels: string[], desc: string, kind?: CompletionItemKind) => {
+				completionItems.push(...labels.map((label) => {
+					return {
+						label: label,
+						kind: kind || CompletionItemKind.Keyword,
+						data: label,
+						detail: desc
+					};
+				}));
+			};
+
+			populateKeywords([
+				'left', 'right', 'extern',
+				'shared', 'assigned by', 'import', 'generate', 'generate_seq',
+			], '(modifier)');
+
+			populateKeywords([
+				'logic', 'int', 'dyn',
+			], '(type)');
+
+			populateKeywords([
+				'struct', 'enum', 'proc', 'spawn', 'type', 'func', 'const', 'reg', 'chan',
+			], '(declaration)');
+
+			populateKeywords([
+				'call', 'loop', 'recursive', 'if', 'else', 'try', 'recurse', 'recv', 'send',
+				'dprint', 'dfinish', 'set', 'cycle', 'sync',  'match', 'put',  'ready', 'in',
+				'probe',
+			], '(control)');
+
+			populateKeywords(['with'], '(other)');
+			populateKeywords(['let'], '(other)');
+
+			completionItems.push(...[
+				['>>', 'wait', 'wait for evaluation of lhs before evaluating rhs'],
+				[':=', 'assign', 'assign rhs value to lhs'],
+				[';', 'join', 'evaluate lhs and rhs simulataneously'],
+			].map(([text, kindStr, detail]) => {
+				let kind: CompletionItemKind = CompletionItemKind.Operator;
+				return {
+					label: text,
+					kind: kind,
+					data: text,
+					detail: '(' + kindStr + '): ' + detail,
+				};
+			}));
+		}
 
 		return completionItems;
 	}
@@ -780,12 +863,40 @@ connection.onCompletion(
 // the completion list.
 connection.onCompletionResolve(
 	(item: CompletionItem): CompletionItem => {
-		if (item.data === 1) {
-			item.detail = 'TypeScript details';
-			item.documentation = 'TypeScript documentation';
-		} else if (item.data === 2) {
-			item.detail = 'JavaScript details';
-			item.documentation = 'JavaScript documentation';
+
+		if (item.data) {
+			// Check if .filename and .navigation are present
+			if ("filename" in item.data && "navigation" in item.data) {
+				const filename = item.data.filename;
+				const navigation = item.data.navigation;
+
+				const defNav = { filename, navigation };
+				const ast = globalCompileResultCache['file://' + filename]?.ast;
+				const defInfo = ast?.getInfoForNavigation(filename, navigation);
+
+				if (!defInfo || !defInfo.span) {
+					return item;
+				}
+
+				const document = documents.get('file://' + filename);
+				if (!document) {
+					return item;
+				}
+
+				const span = defInfo.span;
+				if (!span) {
+					return item;
+				}
+
+				const textInRange = resolveTextInRange(document, span);
+				if (textInRange) {
+					item.documentation = {
+						kind: 'markdown',
+						value:
+							"```anvil\n" + textInRange + "\n```\n\n"
+					};
+				}
+			}
 		}
 		return item;
 	}
