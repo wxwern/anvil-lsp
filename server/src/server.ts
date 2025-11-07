@@ -332,7 +332,7 @@ connection.onDidChangeWatchedFiles(_change => {
 	connection.console.log('We received a file change event');
 });
 
-function resolveTextInRange(document: TextDocument, span: AnvilSpan): string | undefined {
+function resolveTextInRange(document: TextDocument, span: AnvilSpan, multiline: boolean = false): string | undefined {
 	let textInRange;
 	if (span) {
 		textInRange = document?.getText({
@@ -342,10 +342,14 @@ function resolveTextInRange(document: TextDocument, span: AnvilSpan): string | u
 	}
 	const lines = textInRange?.split('\n') || [];
 
+	if (multiline) {
+		return textInRange?.trim();
+	}
+
 	if (lines.length == 1) {
 		return lines[0];
 	} else if (lines.length > 1) {
-		return lines[0] + '...';
+		return lines[0] + ' ...';
 	}
 
 	return undefined;
@@ -425,19 +429,32 @@ connection.onHover(async _event => {
 	const span = navigationInfo?.span;
 
 	const resolvedDefinitions = ast.navigateToDefinitionTree(path, navigation);
-	const resolvedDefinitionsFlattened = resolvedDefinitions?.map(def => {
+
+	// deduplicate definitions by filename + navigation
+	const seenDefinitions = new Set<string>();
+	const uniqueResolvedDefinitions = resolvedDefinitions?.filter(def => {
+		const key = def.filename + '|' + def.navigation.join('>');
+		if (seenDefinitions.has(key)) {
+			return false;
+		} else {
+			seenDefinitions.add(key);
+			return true;
+		}
+	});
+
+	const resolvedDefinitionsFlattened = uniqueResolvedDefinitions?.map(def => {
 		const filename = def.filename.split('/').pop() || def.filename;
 
 		const info = ast.getInfoForNavigation(def.filename, def.navigation);
 		const span = info?.span;
 		const spanStr = span ? `${filename}:${span.start.line}:${span.start.col}` : "";
 
-		const trace = DEBUG ? "- `" + def.navigation.join(' > ') + "`" + (spanStr ? ` (${spanStr})` : '') : '';
+		const trace = DEBUG ? "//   ^ -> " + def.navigation.join(' > ') + (spanStr ? ` (${spanStr})` : '') + '\n//\n' : '';
 
 		const textInRange = resolveTextInRange(documents.get('file://' + def.filename) || document, span);
 		if (textInRange) {
 			const wrap = (info?.kind == "expr" ? info.type : info?.kind);
-			return "- (" + wrap + ")\n\n  - `" + textInRange + "`\n\n  " + trace;
+			return "```anvil\n/* " + wrap + " */\n" + textInRange + "\n" + trace + "```\n\n  ";
 		}
 
 		return trace;
@@ -448,10 +465,10 @@ connection.onHover(async _event => {
 		contents: {
 			kind: 'markdown',
 			value:
-				"`(" + wrap + ") " + resolveTextInRange(document, span) + "`\n\n"
+				 "```anvil\n/* " + wrap + " */\n" + resolveTextInRange(document, span) + "\n```\n\n"
 				+ (DEBUG ? "**AST Path Resolution:** `" + navigationFlattened + "`" : "")
-				+ (resolvedDefinitions ? "\n\n---\n\n**Definitions:**\n" + resolvedDefinitionsFlattened?.join('\n') : '')
-				+ (DEBUG && navigationInfoStr ? "\n\n---\n\n**AST Node:**\n```\n" + navigationInfoStr + "\n```" : '')
+				+ (uniqueResolvedDefinitions?.length ? "\n\n---\n\n**Definitions:**\n" + resolvedDefinitionsFlattened?.join('\n') : '')
+				+ (DEBUG && navigationInfoStr ? "\n\n---\n\n**AST Node:**\n```json\n" + navigationInfoStr + "\n```" : '')
 
 		}
 	};
@@ -795,18 +812,6 @@ connection.onCompletion(
 		// Anvil keywords
 		//
 		if (allowAnvilKeywords) {
-			/*
-			syn keyword anvilType logic int dyn
-syn keyword anvilStorageModifier left right extern
-syn keyword anvilOtherModifier shared assigned\ by import generate generate_seq
-
-" Declaration keywords and names
-syn keyword anvilDeclaration struct enum proc spawn type func const reg chan
-
-syn keyword anvilControl call loop recursive if else try recurse recv send dprint dfinish set cycle sync match put ready in probe
-syn keyword anvilOtherKeywords with let
-			 */
-
 			const populateKeywords = (labels: string[], desc: string, kind?: CompletionItemKind) => {
 				completionItems.push(...labels.map((label) => {
 					return {
@@ -866,7 +871,9 @@ connection.onCompletionResolve(
 
 		if (item.data) {
 			// Check if .filename and .navigation are present
-			if ("filename" in item.data && "navigation" in item.data) {
+			if (Object.prototype.hasOwnProperty.call(item.data, 'filename') &&
+				Object.prototype.hasOwnProperty.call(item.data, 'navigation')) {
+
 				const filename = item.data.filename;
 				const navigation = item.data.navigation;
 

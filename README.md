@@ -54,7 +54,14 @@ For example, with `vim-plug`:
 
 1. Add the following to your `.vimrc` or `init.vim`:
     ```vim
-    Plug 'wxwern/anvil-lsp', { 'rtp': 'extensions/vim', 'do': 'npm install && npm run build' }
+    Plug 'wxwern/anvil-lsp', {
+        \ 'rtp': 'extensions/vim',
+        \ 'do': 'cd extensions/vim && npm install && npm run build'
+        \ }
+    ```
+2. Restart Vim/Neovim, then run:
+    ```vim
+    :PlugInstall
     ```
 
 Or if you prefer to manage it locally:
