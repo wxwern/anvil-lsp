@@ -1,0 +1,4 @@
+{
+    "anvil.anvilBinaryPath": "../bin/anvil",
+    "anvil.debug": true
+}
