@@ -13,7 +13,8 @@
 	},
 	"dependencies": {
 		"vscode-languageserver": "^9.0.1",
-		"vscode-languageserver-textdocument": "^1.0.11"
+		"vscode-languageserver-textdocument": "^1.0.11",
+		"zod": "^4.3.6"
 	},
 	"scripts": {
 		"build": "tsc -b",
@@ -21,8 +22,8 @@
 		"lint": "eslint"
 	},
 	"devDependencies": {
+		"@types/node": "^22",
 		"typescript": "^5.9.2",
-		"typescript-eslint": "^8.39.0",
-		"@types/node": "^22"
+		"typescript-eslint": "^8.39.0"
 	}
 }

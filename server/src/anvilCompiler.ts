@@ -32,11 +32,9 @@
  * ```
  */
 
-// import { z } from 'zod';
-
-import { promises as fs } from 'fs';
 import * as path from 'path';
 import { spawn } from 'child_process';
+import { AnvilAst, AnvilCompUnit } from './anvilAst';
 
 /**
  * JSON position structure from anvil compiler
@@ -82,7 +80,7 @@ interface AnvilJsonOutput {
     success: boolean;
     errors: AnvilJsonError[];
     output?: string | null;
-    ast?: unknown[] | null;
+    ast?: AnvilCompUnit[] | null;
 }
 
 
@@ -128,7 +126,7 @@ export interface AnvilCompilationResult {
     /** Raw stdout output from the compiler */
     stdout: string;
     /** Anvil AST representation */
-    ast?: unknown;
+    ast?: AnvilAst | null;
 }
 
 /**
@@ -202,7 +200,7 @@ export class AnvilCompiler {
             const stdinData = hasInMemoryData ? fileData[files[0]] : undefined
             const { stdout, stderr, exitCode } =  await this.runAnvil(args, stdinData);
 
-            let astOutput: unknown | undefined = undefined;
+            let astOutput: AnvilAst | undefined = undefined;
 
             let errors: AnvilCompilationError[] = [];
 
@@ -211,7 +209,23 @@ export class AnvilCompiler {
                 const errors = this.convertJsonErrors(jsonOutput.errors);
 
                 if (jsonOutput.success && jsonOutput.ast) {
-                   astOutput = (jsonOutput.ast);
+                    try {
+                        astOutput = AnvilAst.parse(jsonOutput.ast);
+                    } catch (astParseError) {
+                        console.error("Error parsing AST output from Anvil compiler:", astParseError);
+                        const truncatedPreview = JSON.stringify(jsonOutput.ast).slice(0, 1000);
+                        errors.push({
+                            type: 'error',
+                            filepath: '',
+                            startLine: 1,
+                            startCol: 0,
+                            endLine: 1,
+                            endCol: Number.MAX_VALUE,
+                            message: `Error: Incompatible Anvil Compiler! Anvil AST output does not match expected schema:\n\n`
+                                + `${astParseError}\n\n`
+                                + `AST output preview (truncated):\n${truncatedPreview}`,
+                        })
+                    }
                 }
 
                 return {
