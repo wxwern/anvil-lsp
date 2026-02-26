@@ -5,27 +5,40 @@
 
 ## Requires
 
-- Anvil [`c35f25d`](https://github.com/wxwern/anvil/commit/c35f25d) or later with AST output support.
+- Anvil [`c35f25d`](https://github.com/wxwern/anvil/tree/c35f25d) or later with **experimental AST output** support.
 
-- [Node.js](https://nodejs.org/en) version 18 or later.
+- [Node.js](https://nodejs.org/en) version 22 or later.
+
+To install the language server, view the [installation instructions](#installation) for your editor of choice.
 
 
 ## Feature Support
 
-(Checkboxes indicate implemented features)
-
-- [ ] Inline Diagnostics (Warnings/Errors)
-- [ ] Hover Information
-    - [ ] Type info
+- [x] Inline Diagnostics
+    - [x] Compile Errors
+    - [ ] Compile Warnings
+- [x] Hover Information
+    - [x] Type info
+    - [x] Definition info
     - [ ] Lifetime info
-- [ ] Go to Definition
-- [ ] Find All References
-- [ ] Autocompletion
-- [ ] Event Inlay Hints
+- [x] Go to Definition
+- [ ] Go to Type Definition
+- [x] Find All References
+- [x] Autocompletion
+    - [x] Anvil keywords
+    - [x] Document symbols
+    - [ ] Context-aware suggestions
+- [x] Inlay Hints
+    - [x] Timing Information
 - [ ] Rename/Refactor symbol
 
+(Checkboxes indicate implemented features)
 
-## Installing Editor Extensions
+**Warning:** Both the Anvil Compiler AST output and Language Server implementations are currently experimental.
+They may have bugs and the AST API are subject to breaking changes. Use with caution.
+
+
+## Installation
 
 Extensions are experimental. They automatically integrate syntax highlighting and LSP support for Anvil files.
 
