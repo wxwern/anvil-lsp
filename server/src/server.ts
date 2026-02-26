@@ -13,16 +13,20 @@ import {
 	DocumentDiagnosticReportKind,
 	type DocumentDiagnosticReport,
 	FileChangeType,
+	TextDocumentPositionParams,
+	CompletionItem,
 } from 'vscode-languageserver/node';
 
 import {
 	TextDocument,
 } from 'vscode-languageserver-textdocument';
 
-import { AnvilServerSettings, DEFAULT_ANVIL_SERVER_SETTINGS } from './AnvilLspUtils';
+import { AnvilLspUtils, AnvilServerSettings, DEFAULT_ANVIL_SERVER_SETTINGS } from './AnvilLspUtils';
 import { AnvilDocument } from './AnvilDocument';
 import { LazyMap } from './LazyMap';
 import { AnvilDescriptionGenerator } from './AnvilDescriptionGenerator';
+import {AnvilCompletionDetail, AnvilCompletionGenerator} from './AnvilCompletionGenerator';
+import {text} from 'stream/consumers';
 
 
 //
@@ -245,7 +249,6 @@ connection.languages.diagnostics.on(async (params) => {
 
 
 // Hover
-
 connection.onHover(async (params) => {
 	console.log('Hover event received at position', params.position, 'in document', params.textDocument.uri);
 
@@ -304,8 +307,39 @@ connection.onHover(async (params) => {
 });
 
 
+// Completions
+connection.onCompletion((params): CompletionItem[] => {
 
+	const anvilDocument = documentAnvilManagers.get(params.textDocument.uri);
+	if (!anvilDocument) {
+		console.log(`Completion request received for document ${params.textDocument.uri}, but AnvilDocument is not available.`);
+		return [];
+	}
 
+	const textBeforeCursor = anvilDocument.textDocument.getText({
+		start: { line: params.position.line, character: 0 },
+		end: params.position
+	});
+
+	console.log(`Completion event received. Text before cursor: "${textBeforeCursor}"`);
+
+	const completionDetails = AnvilCompletionGenerator.getCompletions(textBeforeCursor, anvilDocument);
+
+	console.log(`Found ${completionDetails.length} completion(s) for the current context.`);
+
+	return completionDetails.map(c => c.lspCompletionItem());
+});
+
+connection.onCompletionResolve(async (item: CompletionItem) => {
+	const data = item.data;
+	if (data instanceof AnvilCompletionDetail) {
+		item.documentation = {
+			kind: 'markdown',
+			value: await data.details()
+		};
+	}
+	return item;
+});
 
 //
 // BEGIN

@@ -493,6 +493,31 @@ export class AnvilAst {
     return subfields.filter(filterCond ?? (() => true));
   }
 
+  getAll(filename?: string, filterCond?: AnvilAbsoluteLocationFilter): Readonly<AnvilAbsoluteLocation[]> {
+
+    if (!filename) {
+      const filenames = Array.from(this.orderedLocations.keys());
+      if (filenames.length === 0) {
+        return [];
+      }
+      let results = [];
+      for (const fname of filenames) {
+        results.push(...this.getAll(fname, filterCond));
+      }
+      return results;
+    }
+
+    const locations = this.orderedLocations.get(filename);
+    for (const loc of locations ?? []) {
+      const node = this.goTo(loc);
+      if (!node) {
+        continue;
+      }
+    }
+
+    return (locations ?? []).filter(filterCond ?? (() => true));
+
+  }
 
   /* -------------------------
    * Location Extraction
