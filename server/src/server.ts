@@ -307,6 +307,98 @@ connection.onHover(async (params) => {
 });
 
 
+// Definitions
+connection.onDefinition(async (params) => {
+	const document = documents.get(params.textDocument.uri);
+	if (document === undefined) return null;
+
+	const settings = await documentSettings.get(document.uri);
+
+	const anvilDocument = documentAnvilManagers.get(document.uri);
+	if (!anvilDocument) return null;
+
+	if (!anvilDocument.anvilAst) {
+		await anvilDocument.compile(settings);
+	}
+
+	if (!anvilDocument.anvilAst) {
+		console.log(`AST not yet available for document ${document.uri}`);
+		return null;
+	}
+
+	const position = params.position;
+	const node = anvilDocument.getClosestAnvilNodeToLspPosition(position);
+
+	if (!node) {
+		console.log(`No definition result found`);
+		return null;
+	}
+
+	const defs = node.definitions;
+	if (!defs || defs.length === 0) {
+		console.log(`No definitions found for node at position`);
+		return null;
+	}
+	console.log(`Found ${defs.length} definition(s) for node at position`);
+
+	return defs.map(def => {
+		return {
+			uri: "file://" + def.fullpath,
+			range: AnvilLspUtils.anvilSpanToLspRange(def.span)
+		}
+	});
+});
+
+// References
+connection.onReferences(async (params) => {
+	const document = documents.get(params.textDocument.uri);
+	if (document === undefined) return null;
+
+	const settings = await documentSettings.get(document.uri);
+
+	const anvilDocument = documentAnvilManagers.get(document.uri);
+	if (!anvilDocument) return null;
+
+	if (!anvilDocument.anvilAst) {
+		await anvilDocument.compile(settings);
+	}
+
+	if (!anvilDocument.anvilAst) {
+		console.log(`AST not yet available for document ${document.uri}`);
+		return null;
+	}
+
+	const position = params.position;
+	const node = anvilDocument.getClosestAnvilNodeToLspPosition(position);
+
+	if (!node) {
+		console.log(`No reference result found`);
+		return null;
+	}
+
+	const loc = node.location;
+	if (!loc) {
+		console.log(`Node unexpectedly does not have a valid location`);
+		return null;
+	}
+
+	const refs = anvilDocument.anvilAst?.referencesTo(loc);
+	if (!refs || refs.length === 0) {
+		console.log(`No references found for node at position`);
+		return null;
+	}
+
+	console.log(`Found ${refs.length} reference(s) for node at position`);
+
+	return refs.map(ref => {
+		return {
+			uri: "file://" + ref.fullpath,
+			range: AnvilLspUtils.anvilSpanToLspRange(ref.span)
+		}
+	});
+});
+
+
 // Completions
 connection.onCompletion((params): CompletionItem[] => {
 

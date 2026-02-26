@@ -183,6 +183,11 @@ export class AnvilAbsoluteLocation {
   constructor(basepath: string, filepath: string, span: AnvilSpan) {
     this.basepath = basepath;
     this.filepath = filepath;
+
+    if (this.filepath.startsWith("/")) {
+      this.filepath = path.relative(this.basepath, this.filepath);
+    }
+
     this.span = span;
   }
 
@@ -439,7 +444,7 @@ export class AnvilAst {
    * ------------------------- */
 
   goTo(loc: AnvilAbsoluteLocation): AnvilAstNode | null {
-    const root = this.roots.get(loc.filepath);
+    const root = this.roots.get(loc.fullpath);
     if (!root) {
       return null;
     }
@@ -572,8 +577,8 @@ export class AnvilAst {
     if (!orderedLocations) return;
 
     orderedLocations.sort((a, b) => {
-      if (a.filepath !== b.filepath) {
-        return a.filepath.localeCompare(b.filepath);
+      if (a.fullpath !== b.fullpath) {
+        return a.fullpath.localeCompare(b.fullpath);
       }
       if (a.span.start.line !== b.span.start.line) {
         return a.span.start.line - b.span.start.line;
