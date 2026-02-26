@@ -2,7 +2,7 @@
  * Test script for the updated AnvilCompiler with JSON support
  */
 
-import { AnvilCompiler } from '../src/anvilCompiler';
+import { AnvilCompiler } from '../src/AnvilCompiler';
 import * as path from 'path';
 
 import assert from "node:assert";
@@ -43,10 +43,10 @@ describe('AnvilCompiler', () => {
 		assert.ok(invalidResult.errors.length > 0, 'Expected at least one error');
 		const error = invalidResult.errors[0];
 		assert.ok(error.filepath.endsWith('samples/invalid.anvil'), 'Filepath does not match expected samples/invalid.anvil');
-		assert.strictEqual(error.startLine, 19);
-		assert.strictEqual(error.startCol, 13);
-		assert.strictEqual(error.endLine, 19);
-		assert.strictEqual(error.endCol, 44);
+		assert.strictEqual(error.span.start.line, 19);
+		assert.strictEqual(error.span.start.col, 12);
+		assert.strictEqual(error.span.end.line, 19);
+		assert.strictEqual(error.span.end.col, 43);
 		assert.ok(error.message.includes('Borrow checking failed'), 'Error message does not contain expected text fragment');
 	});
 
