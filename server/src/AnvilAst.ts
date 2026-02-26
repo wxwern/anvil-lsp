@@ -1,9 +1,13 @@
+import path from "path";
 import { z } from "zod";
 
 
+const AnvilPosSchema = z.object({ line: z.number(), col: z.number() });
+export type AnvilPos = z.infer<typeof AnvilPosSchema>;
+
 const AnvilSpanSchema = z.object({
-  start: z.object({ line: z.number(), col: z.number() }),
-  end: z.object({ line: z.number(), col: z.number() }),
+  start: AnvilPosSchema,
+  end: AnvilPosSchema,
 });
 export type AnvilSpan = z.infer<typeof AnvilSpanSchema>;
 
@@ -13,7 +17,7 @@ const AnvilDefSpanSchema = AnvilSpanSchema.extend({
 export type AnvilDefSpan = z.infer<typeof AnvilDefSpanSchema>;
 
 const AnvilSpannableSchema = z.object({
-  kind: z.string(),
+  kind: z.string().optional(),
   span: AnvilSpanSchema,
   def_span: z.array(AnvilDefSpanSchema).optional(),
   action_event: z
@@ -171,57 +175,60 @@ export type AnvilCompUnit = z.infer<typeof AnvilCompUnitSchema>;
 
 export type AnvilAstNodePath = (string | number)[];
 
-export interface AnvilAbsoluteAstNodePath {
-  filename: string;
-  path: AnvilAstNodePath & { 0?: keyof AnvilCompUnit };
-}
-
-export class AnvilLocation {
-  public readonly filename: string;
+export class AnvilAbsoluteLocation {
+  public readonly basepath: string;
+  public readonly filepath: string;
   public readonly span: Readonly<AnvilSpan>;
 
-  constructor(filename: string, span: AnvilSpan) {
-    this.filename = filename;
+  constructor(basepath: string, filepath: string, span: AnvilSpan) {
+    this.basepath = basepath;
+    this.filepath = filepath;
     this.span = span;
+  }
+
+  get fullpath(): string {
+    return path.join(this.basepath, this.filepath);
   }
 
   id(): string {
     const cs = this.span;
-    return `${this.filename}:${cs.start.line}:${cs.start.col}:${cs.end.line}:${cs.end.col}`;
+    return `${this.fullpath}:${cs.start.line}:${cs.start.col}-${cs.end.line}:${cs.end.col}`;
   }
 }
 
-export type AnvilLocationFilter = (loc: AnvilLocation) => boolean;
+export type AnvilAbsoluteLocationFilter = (loc: AnvilAbsoluteLocation) => boolean;
 
 export class AnvilAstNode {
   private readonly _root: AnvilCompUnit;
   private readonly _path: AnvilAstNodePath;
+  private readonly _fsBasepath: string;
 
-  private _rootCache: AnvilAstNode | null = null;
-  private _upCache: AnvilAstNode | null = null;
+  private _rootCache: AnvilAstNode | undefined = undefined;
+  private _upCache: AnvilAstNode | undefined = undefined;
   private _downCache: { [key: string]: AnvilAstNode } = {};
-  private _resolveCache: unknown | null | undefined = null;
+  private _resolveCache: unknown | null | undefined = undefined;
 
-  constructor(root: AnvilCompUnit, path: AnvilAstNodePath = []) {
+  constructor(fsBasepath: string, root: AnvilCompUnit, path: AnvilAstNodePath = []) {
+    this._fsBasepath = fsBasepath;
     this._root = root;
     this._path = path;
   }
 
-  path(): AnvilAstNodePath {
+  get path(): AnvilAstNodePath {
     return [...this._path];
   }
 
-  isRoot(): boolean {
+  get isRoot(): boolean {
     return this._path.length === 0;
   }
 
-  root(): AnvilAstNode {
+  get root(): AnvilAstNode {
     if (this._rootCache) {
       return this._rootCache;
     }
 
     let node: AnvilAstNode = this;
-    while (!node.isRoot()) {
+    while (!node.isRoot) {
       node = node.up();
     }
     this._rootCache = node;
@@ -248,13 +255,13 @@ export class AnvilAstNode {
     if (this._upCache) {
       return this._upCache;
     }
-    if (this.isRoot()) {
+    if (this.isRoot) {
       this._rootCache = this; // Cache root node
       return this; // Already at root, can't go up
     }
 
     const parentPath = this._path.slice(0, -1);
-    const parentNode = new AnvilAstNode(this._root, parentPath);
+    const parentNode = new AnvilAstNode(this._fsBasepath, this._root, parentPath);
 
     parentNode._rootCache = this._rootCache;
     parentNode._downCache[this._path[this._path.length - 1]] = this;
@@ -268,7 +275,7 @@ export class AnvilAstNode {
       return this._downCache[key];
     }
 
-    const node = new AnvilAstNode(this._root, [...this._path, key]);
+    const node = new AnvilAstNode(this._fsBasepath, this._root, [...this._path, key]);
     node._upCache = this;
     node._rootCache = this._rootCache;
     this._downCache[key] = node;
@@ -283,27 +290,24 @@ export class AnvilAstNode {
    * Resolves and returns the flattened node at current path.
    */
   resolve(): unknown | null {
-    if (this._resolveCache !== undefined) {
-      return this._resolveCache;
-    }
-
     if (this._path.length === 0) {
       this._resolveCache = this._root ?? null;
     }
 
-    // Resolves parent and populates its resolution into its cache
-    this.up().resolve();
+    if (this._resolveCache !== undefined) {
+      return this._resolveCache;
+    }
 
-    // Take parent's resolution and extract current node's value
+    // Take parent's resolution and extract current node's key
     const key = this._path[this._path.length - 1];
-    const upperResolveCache = this._upCache?._resolveCache;
+    const upper = this.up().resolve();
 
-    if (upperResolveCache && typeof upperResolveCache === "object" && key in upperResolveCache) {
+    if (upper && typeof upper === "object" && key in upper) {
       // Populate cache with node
-      this._resolveCache = (upperResolveCache as any)[key];
+      this._resolveCache = (upper as any)[key];
     } else {
       // Key not found in parent --> this node doesn't exist!
-      this._resolveCache = null;
+      return null;
     }
 
     return this._resolveCache;
@@ -327,11 +331,18 @@ export class AnvilAstNode {
     return typeChecked.data;
   }
 
+  /**
+   * Resolves the root node of the AST.
+   */
+  resolveRoot(): AnvilCompUnit {
+    return this.root.resolveAs(AnvilCompUnitSchema)!;
+  }
+
   /* -------------------------
    * Convenience Accessors
    * ------------------------- */
 
-  event(): string | null {
+  get event(): string | null {
     const tid = this.traverse("action_event", "tid").resolveAs(z.number());
     const eid = this.traverse("action_event", "eid").resolveAs(z.number());
     if (tid !== null && eid !== null) {
@@ -341,17 +352,27 @@ export class AnvilAstNode {
     return null;
   }
 
-  span(): AnvilSpan | null {
+  get span(): AnvilSpan | null {
     return this.traverse("span").resolveAs(AnvilSpanSchema) ?? null;
   }
 
-  definition(): AnvilLocation | null {
-    return this.definitions()[0] ?? null;
+  get location(): AnvilAbsoluteLocation | null {
+    const span = this.span;
+    if (!span) return null;
+
+    const filename = this.root.resolveAs(AnvilCompUnitSchema)?.file_name;
+    if (!filename) return null;
+
+    return new AnvilAbsoluteLocation(this._fsBasepath, filename, span);
   }
 
-  definitions(): AnvilLocation[] {
+  get definition(): AnvilAbsoluteLocation | null {
+    return this.definitions[0] ?? null;
+  }
+
+  get definitions(): AnvilAbsoluteLocation[] {
     const defSpan = this.traverse("def_span").resolveAs(AnvilDefSpanSchema.array()) ?? [];
-    return defSpan.map((d) => new AnvilLocation(d.cunit || this._root.file_name, d));
+    return defSpan.map((d) => new AnvilAbsoluteLocation(this._fsBasepath, d.cunit || this._root.file_name, d));
   }
 }
 
@@ -363,42 +384,51 @@ export class AnvilAstNode {
  * looking up definitions and references, and extracting location information from nodes, and more.
  */
 export class AnvilAst {
+
+  public readonly initDate: Date = new Date();
+
   private readonly roots: Map<string, AnvilAstNode> = new Map();
 
   /** filename -> sorted array of all locations in file */
-  private readonly orderedLocations: Map<string, AnvilLocation[]> = new Map();
+  private readonly orderedLocations: Map<string, AnvilAbsoluteLocation[]> = new Map();
 
   /** loc-uid -> path from root to node */
   private readonly astNodePathIndex: Map<string, AnvilAstNodePath> = new Map();
 
   /** loc-uid (source definition) -> referrers */
-  private readonly referenceIndex: Map<string, AnvilLocation[]> = new Map();
+  private readonly referenceIndex: Map<string, AnvilAbsoluteLocation[]> = new Map();
 
   /** loc-uid (parent) -> subfields locations */
-  private readonly subfieldIndex: Map<string, AnvilLocation[]> = new Map();
+  private readonly subfieldIndex: Map<string, AnvilAbsoluteLocation[]> = new Map();
 
   /**
    * Parser for Anvil AST output. Accepts a raw AST output (already parsed from JSON),
    * flattens the AST, validates it against the expected schema, and constructs an AnvilAst instance.
    *
+   * @param fsBasepath The base path for resolving file paths in the AST.
    * @param units Raw AST output from Anvil compiler (already parsed from JSON).
    * @returns An instance of AnvilAst if parsing and validation succeed.
    * @throws If the input does not match the expected schema or if there is an error during parsing.
    */
-  public static parse(units: AnvilCompUnit[] | unknown): AnvilAst {
+  public static parse(fsBasepath: string, units: AnvilCompUnit[] | unknown): AnvilAst {
     const parsed = AnvilCompUnitSchema.array().parse(AnvilAst.deepFlattenNode(units));
-    return new AnvilAst(parsed);
+    return new AnvilAst(fsBasepath, parsed);
   }
 
   /**
    * Constructs an AnvilAst instance from an array of AnvilCompUnit objects.
    */
-  private constructor(units: AnvilCompUnit[]) {
+  private constructor(fsBasepath: string, units: AnvilCompUnit[]) {
     for (const unit of units) {
-      const rootNode = new AnvilAstNode(unit, []);
+
+      const rootNode = new AnvilAstNode(fsBasepath, unit, []);
+
       this.roots.set(unit.file_name, rootNode);
       this.orderedLocations.set(unit.file_name, []);
-      this.deepMapNode(rootNode.resolve(), unit.file_name, []);
+
+      const mappedCount = this.deepMapNode(rootNode.resolve(), fsBasepath, unit.file_name, []);
+      console.log(`Processed and mapped ${mappedCount} nodes for file ${unit.file_name}`);
+
       this.sortLocations(unit.file_name);
     }
   }
@@ -408,8 +438,8 @@ export class AnvilAst {
    * Navigation To Node
    * ------------------------- */
 
-  goTo(loc: AnvilLocation): AnvilAstNode | null {
-    const root = this.roots.get(loc.filename);
+  goTo(loc: AnvilAbsoluteLocation): AnvilAstNode | null {
+    const root = this.roots.get(loc.filepath);
     if (!root) {
       return null;
     }
@@ -439,15 +469,15 @@ export class AnvilAst {
    * Reference Lookup
    * ------------------------- */
 
-  definitionsOf(loc: AnvilLocation, filterCond?: AnvilLocationFilter): Readonly<AnvilLocation[]> {
+  definitionsOf(loc: AnvilAbsoluteLocation, filterCond?: AnvilAbsoluteLocationFilter): Readonly<AnvilAbsoluteLocation[]> {
     const node = this.goTo(loc);
     if (!node) {
       return [];
     }
-    return node.definitions().filter(filterCond ?? (() => true));
+    return node.definitions.filter(filterCond ?? (() => true));
   }
 
-  referencesTo(loc: AnvilLocation, filterCond?: AnvilLocationFilter): Readonly<AnvilLocation[]> {
+  referencesTo(loc: AnvilAbsoluteLocation, filterCond?: AnvilAbsoluteLocationFilter): Readonly<AnvilAbsoluteLocation[]> {
     const refs = this.referenceIndex.get(loc.id());
     if (!refs) {
       return [];
@@ -455,7 +485,7 @@ export class AnvilAst {
     return refs.filter(filterCond ?? (() => true));
   }
 
-  subfieldsOf(loc: AnvilLocation, filterCond?: AnvilLocationFilter): Readonly<AnvilLocation[]> {
+  subfieldsOf(loc: AnvilAbsoluteLocation, filterCond?: AnvilAbsoluteLocationFilter): Readonly<AnvilAbsoluteLocation[]> {
     const subfields = this.subfieldIndex.get(loc.id());
     if (!subfields) {
       return [];
@@ -468,40 +498,43 @@ export class AnvilAst {
    * Location Extraction
    * ------------------------- */
 
-  findLocation(node: AnvilAstNode): AnvilLocation | null {
-    const span = node.span();
-    if (!span) return null;
-
-    const filename = node.root().resolveAs(AnvilCompUnitSchema)?.file_name;
-    if (!filename) return null;
-
-    return new AnvilLocation(filename, span);
+  findLocation(node: AnvilAstNode): AnvilAbsoluteLocation | null {
+    return node.location;
   }
 
-  findClosestLocation(filename: string, line: number, col: number): AnvilLocation | null {
+  findClosestLocation(filename: string, line: number, col: number): AnvilAbsoluteLocation | null {
+    console.log(`Search: closest AST node in ${filename} to line ${line}, col ${col}`);
+
     // Binary search for closest location in the file
     const locations = this.orderedLocations.get(filename);
+
     if (!locations || locations.length === 0) {
       return null;
     }
 
-    let left = 0;
-    let right = locations.length - 1;
-    let best: AnvilLocation | null = null;
+    let best: { loc: AnvilAbsoluteLocation, size: number } | null = null;
 
-    while (left <= right) {
-      const mid = Math.floor((left + right) / 2);
-      const loc = locations[mid];
+    for (const loc of locations) {
+      const isBefore = loc.span.end.line < line || (loc.span.end.line === line && loc.span.end.col < col);
+      if (isBefore) {
+        continue;
+      }
 
-      if (loc.span.start.line < line || (loc.span.start.line === line && loc.span.start.col <= col)) {
-        best = loc; // This location is a candidate
-        left = mid + 1; // Search right half for a closer match
-      } else {
-        right = mid - 1; // Search left half
+      const isAfter = loc.span.start.line > line || (loc.span.start.line === line && loc.span.start.col > col);
+      if (isAfter) {
+        continue;
+      }
+
+      const size = (loc.span.end.line - loc.span.start.line) * 1000 + (loc.span.end.col - loc.span.start.col);
+
+      if (!best || size < best.size) {
+        best = { loc, size };
       }
     }
 
-    return best;
+    console.log(`Closest location found: ${best ? best.loc.id() : "none"}`);
+
+    return best?.loc ?? null;
   }
 
 
@@ -514,8 +547,8 @@ export class AnvilAst {
     if (!orderedLocations) return;
 
     orderedLocations.sort((a, b) => {
-      if (a.filename !== b.filename) {
-        return a.filename.localeCompare(b.filename);
+      if (a.filepath !== b.filepath) {
+        return a.filepath.localeCompare(b.filepath);
       }
       if (a.span.start.line !== b.span.start.line) {
         return a.span.start.line - b.span.start.line;
@@ -530,7 +563,7 @@ export class AnvilAst {
     });
   }
 
-  private deepMapNode(node: unknown, fname: string, path: AnvilAstNodePath = []): void {
+  private deepMapNode(node: unknown, fbasepath: string, fpath: string, path: AnvilAstNodePath = []): number {
     if (node instanceof AnvilAstNode) {
       throw new Error("Unexpected AnvilAstNode instance during deepMapNode traversal");
     }
@@ -539,15 +572,15 @@ export class AnvilAst {
       const spannableNode = AnvilSpannableSchema.safeParse(node);
       if (spannableNode.success) {
         const spannable = spannableNode.data;
-        const location = new AnvilLocation(fname, spannable.span);
+        const location = new AnvilAbsoluteLocation(fbasepath, fpath, spannable.span);
 
         this.astNodePathIndex.set(location.id(), path);
-        this.orderedLocations.get(fname)!.push(location);
+        this.orderedLocations.get(fpath)!.push(location);
 
         // Populate reference index for reverse definition lookup
         const defSpans = spannable.def_span ?? [];
         for (const defSpan of defSpans) {
-          const defLocation = new AnvilLocation(defSpan.cunit || fname, defSpan);
+          const defLocation = new AnvilAbsoluteLocation(fbasepath, defSpan.cunit || fpath, defSpan);
           const defLocId = defLocation.id();
           if (!this.referenceIndex.has(defLocId)) {
             this.referenceIndex.set(defLocId, []);
@@ -561,22 +594,24 @@ export class AnvilAst {
     })()
 
     if (Array.isArray(node)) {
+      let sum = 0;
       for (let i = 0; i < node.length; i++) {
         const child = node[i];
-        this.deepMapNode(child, fname, [...path, i]);
+        sum += this.deepMapNode(child, fbasepath, fpath, [...path, i]);
       }
-      return;
+      return 1 + sum;
     }
 
     if (node && typeof node === "object") {
-      for (const key of Object.keys(node)) {
+      let sum = 0;
+      for (let key in node) {
         const child = (node as any)[key];
-        this.deepMapNode(child, fname, [...path, key]);
+        sum += this.deepMapNode(child, fbasepath, fpath, [...path, key]);
       }
-      return;
+      return 1 + sum;
     }
 
-    return;
+    return 1;
   }
 
   private static deepFlattenNode(node: unknown): unknown {

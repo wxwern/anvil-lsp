@@ -34,7 +34,7 @@
 
 import * as path from 'path';
 import { spawn } from 'child_process';
-import { AnvilAst, AnvilCompUnit } from './anvilAst';
+import { AnvilAst, AnvilCompUnit, AnvilSpan } from './AnvilAst';
 
 /**
  * JSON position structure from anvil compiler
@@ -88,16 +88,10 @@ interface AnvilJsonOutput {
  * Represents information about a compilation error from the Anvil compiler
  */
 export interface AnvilCompilationErrorInfo {
-    /** The absolute file path where the error occurred */
+    /** The file path where the error occurred relative to the project root */
     filepath: string;
-    /** The line number (1-based) where the error starts */
-    startLine: number;
-    /** The column number (1-based) where the error starts */
-    startCol: number;
-    /** The line number (1-based) where the error ends */
-    endLine: number;
-    /** The column number (1-based) where the error ends */
-    endCol: number;
+    /** The span of the error in the source file */
+    span: AnvilSpan;
     /** The full error message description */
     message: string;
 }
@@ -145,7 +139,7 @@ export interface AnvilCompilationResult {
  * ```
  */
 export class AnvilCompiler {
-    private readonly projectRoot: string;
+    public readonly projectRoot: string;
     private readonly anvilBinaryPath: string;
 
     constructor(projectRoot?: string, anvilBinaryPath?: string) {
@@ -177,10 +171,10 @@ export class AnvilCompiler {
                 errors: [{
                     type: 'error',
                     filepath: '',
-                    startLine: 1,
-                    startCol: 0,
-                    endLine: 1,
-                    endCol: Number.MAX_VALUE,
+                    span: {
+                        start: { line: 1, col: 0 },
+                        end: { line: 1, col: Number.MAX_VALUE }
+                    },
                     message: 'AnvilCompiler only supports compiling one file at a time, but language server was asked to compile multiple files.'
                 }],
                 stderr: '',
@@ -208,19 +202,20 @@ export class AnvilCompiler {
                 const jsonOutput: AnvilJsonOutput = JSON.parse(stdout);
                 const errors = this.convertJsonErrors(jsonOutput.errors);
 
-                if (jsonOutput.success && jsonOutput.ast) {
+                if (jsonOutput.ast) {
                     try {
-                        astOutput = AnvilAst.parse(jsonOutput.ast);
+                        astOutput = AnvilAst.parse(this.projectRoot, jsonOutput.ast);
+                        console.log('Successfully parsed AST output from Anvil compiler');
                     } catch (astParseError) {
                         console.error("Error parsing AST output from Anvil compiler:", astParseError);
                         const truncatedPreview = JSON.stringify(jsonOutput.ast).slice(0, 1000);
                         errors.push({
                             type: 'error',
                             filepath: '',
-                            startLine: 1,
-                            startCol: 0,
-                            endLine: 1,
-                            endCol: Number.MAX_VALUE,
+                            span: {
+                                start: { line: 1, col: 0 },
+                                end: { line: 1, col: Number.MAX_VALUE }
+                            },
                             message: `Error: Incompatible Anvil Compiler! Anvil AST output does not match expected schema:\n\n`
                                 + `${astParseError}\n\n`
                                 + `AST output preview (truncated):\n${truncatedPreview}`,
@@ -243,10 +238,10 @@ export class AnvilCompiler {
                     errors: [{
                         type: 'error',
                         filepath: '',
-                        startLine: 1,
-                        startCol: 0,
-                        endLine: 1,
-                        endCol: Number.MAX_VALUE,
+                        span: {
+                            start: { line: 1, col: 0 },
+                            end: { line: 1, col: Number.MAX_VALUE }
+                        },
                         message: `Failed to parse compiler output as JSON: ${parseError}\n\nRaw output:\n${stdout}\n\nRaw stderr:\n${stderr}`
                     }],
                     stderr,
@@ -262,10 +257,10 @@ export class AnvilCompiler {
                 errors: [{
                     type: 'error',
                     filepath: '',
-                    startLine: 1,
-                    startCol: 0,
-                    endLine: 1,
-                    endCol: Number.MAX_VALUE,
+                    span: {
+                        start: { line: 1, col: 0 },
+                        end: { line: 1, col: Number.MAX_VALUE }
+                    },
                     message:
                         `Failed to execute anvil compiler: ${error instanceof Error ? error.message : String(error)}\n\n` +
                         `Ensure it's in your PATH or specified correctly in Anvil Language Server extension settings`
@@ -281,7 +276,7 @@ export class AnvilCompiler {
     ): Promise<{ stdout: string; stderr: string; exitCode: number | null }> {
 
         return new Promise((resolve, reject) => {
-            console.log(`Running anvil: ${this.anvilBinaryPath} ${args.join(' ')}`);
+            console.log(`Executing Anvil: ${this.anvilBinaryPath} ${args.join(' ')}`);
             const proc = spawn(this.anvilBinaryPath, args, { cwd: this.projectRoot, stdio: 'pipe' });
 
             let stdout = '';
@@ -296,6 +291,7 @@ export class AnvilCompiler {
             });
 
             proc.on('close', (code) => {
+                console.log(`Anvil process exited with code ${code}`);
                 resolve({ stdout, stderr, exitCode: code });
             });
 
@@ -320,9 +316,6 @@ export class AnvilCompiler {
         jsonErrors: AnvilJsonError[]
     ): AnvilCompilationError[] {
         return jsonErrors.map(error => {
-            const LINE_OFFSET = 0; // Anvil lines are 1-based (no offset needed)
-            const COL_OFFSET = 1;  // Anvil compiler columns are 0-based (+1 offset needed)
-
             // Find the first codespan fragment
             const codespan = error.description.find(f => f.kind === "codespan") as (AnvilJsonFragment & { kind: "codespan" }) | undefined;
 
@@ -366,10 +359,7 @@ export class AnvilCompiler {
                         case "codespan":
                             supplementaryInfo.push({
                                 filepath: fragment.path || filepath,
-                                startLine: fragment.trace.start.line + LINE_OFFSET,
-                                startCol: fragment.trace.start.col + COL_OFFSET,
-                                endLine: fragment.trace.end.line + LINE_OFFSET,
-                                endCol: fragment.trace.end.col + COL_OFFSET,
+                                span: { start: fragment.trace.start, end: fragment.trace.end },
                                 message: codespanDescribedBy.trim(),
                             });
 
@@ -381,10 +371,10 @@ export class AnvilCompiler {
             return {
                 type: error.type,
                 filepath,
-                startLine: startLine + LINE_OFFSET,
-                startCol: startCol + COL_OFFSET,
-                endLine: endLine + LINE_OFFSET,
-                endCol: endCol + COL_OFFSET,
+                span: {
+                    start: { line: startLine, col: startCol },
+                    end: { line: endLine, col: endCol }
+                },
                 message: message,
                 supplementaryInfo: supplementaryInfo.length > 0 ? supplementaryInfo : undefined
             };

@@ -5,29 +5,29 @@
 import {
 	createConnection,
 	TextDocuments,
-	Diagnostic,
-	DiagnosticSeverity,
 	ProposedFeatures,
 	InitializeParams,
 	DidChangeConfigurationNotification,
-	CompletionItem,
-	CompletionItemKind,
-	TextDocumentPositionParams,
 	TextDocumentSyncKind,
 	InitializeResult,
 	DocumentDiagnosticReportKind,
-	type DocumentDiagnosticReport
+	type DocumentDiagnosticReport,
+	FileChangeType,
 } from 'vscode-languageserver/node';
 
 import {
-	TextDocument
+	TextDocument,
 } from 'vscode-languageserver-textdocument';
 
-import {
-	AnvilCompilationResult,
-	AnvilCompiler
-} from './anvilCompiler';
+import { AnvilServerSettings, DEFAULT_ANVIL_SERVER_SETTINGS } from './AnvilLspUtils';
+import { AnvilDocument } from './AnvilDocument';
+import { LazyMap } from './LazyMap';
+import { AnvilDescriptionGenerator } from './AnvilDescriptionGenerator';
 
+
+//
+// INITIAL SETUP
+//
 
 // Create a connection for the server, using Node's IPC as a transport.
 // Also include all preview / proposed LSP features.
@@ -36,9 +36,17 @@ const connection = createConnection(ProposedFeatures.all);
 // Create a simple text document manager.
 const documents = new TextDocuments(TextDocument);
 
+// Basic LSP Client Capabilities tracking
 let hasConfigurationCapability = false;
 let hasWorkspaceFolderCapability = false;
 let hasDiagnosticRelatedInformationCapability = false;
+
+
+
+
+//
+// INITIALIZATION
+//
 
 connection.onInitialize((params: InitializeParams) => {
 	const capabilities = params.capabilities;
@@ -60,7 +68,6 @@ connection.onInitialize((params: InitializeParams) => {
 	const result: InitializeResult = {
 		capabilities: {
 			textDocumentSync: TextDocumentSyncKind.Incremental,
-			// Tell the client that this server supports code completion.
 			completionProvider: {
 				resolveProvider: true,
 				// triggers
@@ -99,31 +106,87 @@ connection.onInitialized(() => {
 	}
 });
 
-// The example settings
-interface AnvilServerSettings {
-	maxNumberOfProblems: number;
-	projectRoot?: string;
-	executablePath?: string;
-	debug?: boolean;
-}
+
+
+
+
+//
+// GLOBAL CACHE
+//
 
 // The global settings, used when the `workspace/configuration` request is not supported by the client.
-// Please note that this is not the case when using this server with the client provided in this example
-// but could happen with other clients.
-const defaultSettings: AnvilServerSettings = { maxNumberOfProblems: 1000 };
-let globalSettings: AnvilServerSettings = defaultSettings;
+let globalSettings: AnvilServerSettings = DEFAULT_ANVIL_SERVER_SETTINGS;
 
 // Cache the settings of all open documents
-const documentSettings = new Map<string, Thenable<AnvilServerSettings>>();
+const documentSettings = LazyMap.onCacheMissAsync<string, Thenable<AnvilServerSettings>>(async resource => {
+	if (!hasConfigurationCapability) {
+		return Promise.resolve(globalSettings).then(s => s || DEFAULT_ANVIL_SERVER_SETTINGS)
+	}
+	const result = connection.workspace.getConfiguration({
+		scopeUri: resource,
+		section: 'anvil'
+	});
+	return result.then(s => s || DEFAULT_ANVIL_SERVER_SETTINGS);
+});
 
-// Global compile lock to avoid concurrent compilations
-let globalCompileLock: { [key: string]: Promise<AnvilCompilationResult> } = {};
+// Cache AnvilDocument instances for all open documents
+const documentAnvilManagers = LazyMap.onCacheMiss<string, AnvilDocument | undefined>(resource => {
+	const doc = documents.get(resource);
+	return doc ? AnvilDocument.fromTextDocument(doc) : undefined;
+});
 
-// Global compile result cache to avoid re-processing the same result
-let globalCompileResultCache: { [key: string]: AnvilCompilationResult } = {};
 
-// Global pending compile flags to debounce multiple compile requests
-let globalPendingCompile: { [key: string]: boolean } = {};
+
+
+
+
+//
+// LSP Basic File Events
+//
+
+// Monitor changes to files and configuration
+connection.onDidChangeWatchedFiles(_change => {
+	// Monitored files have change in VSCode
+	connection.console.log('We received a miscellaneous file change event');
+
+	// Observe if there's anvil files updated outside
+	let hasChanges = false;
+	for (let change of _change.changes) {
+		const extensions = ['.anvil'];
+		if (!extensions.some(ext => change.uri.endsWith(ext))) {
+			return;
+		}
+
+		switch (change.type) {
+			case FileChangeType.Created:
+				connection.console.log(`File created: ${change.uri}`);
+				hasChanges = true;
+				break;
+			case FileChangeType.Changed:
+				connection.console.log(`File changed: ${change.uri}`);
+				hasChanges = true;
+				break;
+			case FileChangeType.Deleted:
+				connection.console.log(`File deleted: ${change.uri}`);
+				hasChanges = true;
+				break;
+		}
+	}
+	if (!hasChanges) {
+		return;
+	}
+	connection.languages.diagnostics.refresh();
+});
+
+connection.onDidOpenTextDocument(e => {
+	const document = e.textDocument;
+	documentAnvilManagers.get(document.uri); // preload AnvilDocument for the opened document
+});
+
+connection.onDidChangeTextDocument(e => {
+	const anvilDocument = documentAnvilManagers.get(e.textDocument.uri);
+	anvilDocument?.syncTextEdits(e.contentChanges);
+});
 
 connection.onDidChangeConfiguration(change => {
 	if (hasConfigurationCapability) {
@@ -134,203 +197,119 @@ connection.onDidChangeConfiguration(change => {
 			(change.settings['anvil'] || globalSettings)
 		);
 	}
-	// Refresh the diagnostics since the `maxNumberOfProblems` could have changed.
-	// We could optimize things here and re-fetch the setting first can compare it
-	// to the existing setting, but this is out of scope for this example.
 	connection.languages.diagnostics.refresh();
 });
 
-function getDocumentSettings(resource: string): Thenable<AnvilServerSettings> {
-	if (!hasConfigurationCapability) {
-		return Promise.resolve(globalSettings).then(s => s || defaultSettings)
-	}
-	let result = documentSettings.get(resource);
-	if (!result) {
-		result = connection.workspace.getConfiguration({
-			scopeUri: resource,
-			section: 'anvil'
-		});
-		documentSettings.set(resource, result);
-	}
-	return result.then(s => s || defaultSettings);
-}
-
-async function convertAnvilCompilerResultToDiagnostics(result: AnvilCompilationResult, textDocument: TextDocument): Promise<Diagnostic[]> {
-	let problems = 0;
-	const settings = await getDocumentSettings(textDocument.uri);
-
-	const diagnostics: Diagnostic[] = [];
-	if (!result || !result.errors) return diagnostics;
-
-	for (let error of result.errors) {
-		problems++;
-		if (problems > settings.maxNumberOfProblems) {
-			break;
-		}
-
-		const errorTypeString = {
-			'warning': 'Warning',
-			'error': 'Error'
-		}
-
-		const errorTypeDiagnosticSeverity = {
-			'warning': DiagnosticSeverity.Warning,
-			'error': DiagnosticSeverity.Error
-		}
-
-		const diagnostic: Diagnostic = {
-			severity: errorTypeDiagnosticSeverity[error.type] || DiagnosticSeverity.Error,
-			range: {
-				start: {
-					line: Math.max(0, error.startLine - 1),
-					character: Math.max(0, error.startCol - 1),
-				},
-				end: {
-					line: Math.max(0, error.endLine - 1),
-					character: Math.max(0, error.endCol - 1)
-				}
-			},
-			message: error.message,
-			source: 'anvil'
-		};
-
-		if (hasDiagnosticRelatedInformationCapability) {
-			diagnostic.relatedInformation = [];
-
-			const mainMessage = `Anvil Compiler ${errorTypeString[error.type] || 'Error'}`;
-
-			if (error.supplementaryInfo) {
-				for (let info of error.supplementaryInfo) {
-					diagnostic.relatedInformation.push({
-						location: {
-							uri: textDocument.uri,
-							range: {
-								start: {
-									line: Math.max(0, info.startLine - 1),
-									character: Math.max(0, info.startCol - 1)
-								},
-								end: {
-									line: Math.max(0, info.endLine - 1),
-									character: Math.max(0, info.endCol - 1)
-								}
-							}
-						},
-						message: `${mainMessage} (${info.message})`
-					});
-				}
-
-			} else {
-				diagnostic.relatedInformation = [
-					{
-						location: {
-							uri: textDocument.uri,
-							range: Object.assign({}, diagnostic.range)
-						},
-						message: mainMessage
-					}
-				];
-			}
-		}
-
-		diagnostics.push(diagnostic);
-	}
-	return diagnostics;
-}
-
-// Only keep settings for open documents
 documents.onDidClose(e => {
 	documentSettings.delete(e.document.uri);
+	documentAnvilManagers.delete(e.document.uri);
 });
 
 
+
+
+
+//
+// LSP FEATURES
+//
+
+// Diagnostics
 connection.languages.diagnostics.on(async (params) => {
+	const EMPTY = {
+		kind: DocumentDiagnosticReportKind.Full,
+		items: []
+	} satisfies DocumentDiagnosticReport;
+
 	const document = documents.get(params.textDocument.uri);
-	if (document !== undefined) {
-		return {
-			kind: DocumentDiagnosticReportKind.Full,
-			items: await delayedValidateTextDocument(document)
-		} satisfies DocumentDiagnosticReport;
-	} else {
-		// We don't know the document. We can either try to read it from disk
-		// or we don't report problems for it.
-		return {
-			kind: DocumentDiagnosticReportKind.Full,
-			items: []
-		} satisfies DocumentDiagnosticReport;
-	}
+	if (document === undefined) return EMPTY;
+
+	const anvilDocument = documentAnvilManagers.get(document.uri);
+	if (!anvilDocument) return EMPTY;
+
+	const settings = await documentSettings.get(document.uri);
+
+	await anvilDocument.scheduleCompileDebounced(settings);
+
+	AnvilDescriptionGenerator.DEBUG = !!settings.debug;
+
+	const diagnostics =
+		hasDiagnosticRelatedInformationCapability
+			? await AnvilDescriptionGenerator.describeDiagnostics(anvilDocument, settings.maxNumberOfProblems)
+			: [];
+
+	return {
+		kind: DocumentDiagnosticReportKind.Full,
+		items: diagnostics
+	} satisfies DocumentDiagnosticReport;
 });
 
 
-let pendingValidationRequests: { [uri: string]: { timeout: NodeJS.Timeout, cancel: () => void } } = {};
-async function delayedValidateTextDocument(textDocument: TextDocument): Promise<Diagnostic[]> {
-	pendingValidationRequests[textDocument.uri]?.cancel();
+// Hover
 
-	return new Promise((resolve) => {
-		const timeout = setTimeout(async () => {
-			delete pendingValidationRequests[textDocument.uri];
-			const diagnostics = await validateTextDocument(textDocument);
-			resolve(diagnostics);
-		}, 500);
+connection.onHover(async (params) => {
+	console.log('Hover event received at position', params.position, 'in document', params.textDocument.uri);
 
-		const cancel = () => {
-			clearTimeout(timeout);
-			delete pendingValidationRequests[textDocument.uri];
-			resolve([]);
+	const document = documents.get(params.textDocument.uri);
+	if (document === undefined) return null;
+
+	const settings = await documentSettings.get(document.uri);
+	const D = !!settings.debug;
+
+	AnvilDescriptionGenerator.DEBUG = D;
+
+	const anvilDocument = documentAnvilManagers.get(document.uri);
+	if (!anvilDocument) return !D ? null : {
+		contents: {
+			kind: 'markdown',
+			value: 'Hover failed: Anvil document not available'
+		}
+	};
+
+
+	if (!anvilDocument.anvilAst) {
+		await anvilDocument.compile(settings);
+	}
+
+	if (!anvilDocument.anvilAst) {
+		console.log(`AST not yet available for document ${document.uri}`);
+		return !D ? null : {
+			contents: {
+				kind: 'markdown',
+				value: 'AST information for hover not yet available'
+			}
 		};
-
-		pendingValidationRequests[textDocument.uri] = { timeout, cancel };
-	});
-}
-
-async function validateTextDocument(textDocument: TextDocument): Promise<Diagnostic[]> {
-
-	if (globalPendingCompile[textDocument.uri]) {
-		// There's an ongoing compilation for this document, do not run now.
-		globalPendingCompile[textDocument.uri] = true;
-		const result = await globalCompileLock[textDocument.uri];
-		return await convertAnvilCompilerResultToDiagnostics(result, textDocument);
 	}
 
-	globalCompileLock[textDocument.uri] = (async () => {
-		let result: AnvilCompilationResult | undefined;
+	const position = params.position;
+	const node = anvilDocument.getClosestAnvilNodeToLspPosition(position);
 
-		//delete globalCompileResultCache[textDocument.uri];
+	if (!node) {
+		console.log(`No hover result found`);
+		return !D ? null : {
+			contents: {
+				kind: 'markdown',
+				value: 'No information available (cannot find AST node at position)'
+			}
+		};
+	}
 
-		while (!result || globalPendingCompile[textDocument.uri]) {
-			delete globalPendingCompile[textDocument.uri];
-
-			const settings = await getDocumentSettings(textDocument.uri);
-
-			const compiler = new AnvilCompiler(settings.projectRoot, settings.executablePath);
-			const filePath = textDocument.uri.replace('file://', '');
-			const fileData = { [filePath]: textDocument.getText() };
-
-			result = await compiler.compile(filePath, fileData);
+	return {
+		contents: {
+			kind: 'markdown',
+			value: await AnvilDescriptionGenerator.describeNode(node, anvilDocument)
 		}
+	};
 
-		const prevAst = globalCompileResultCache[textDocument.uri]?.ast;
 
-		if (!result || !result.ast) {
-			result.ast = prevAst;
-		}
-
-		globalCompileResultCache[textDocument.uri] = result;
-
-		return result;
-	})();
-
-	const result = await globalCompileLock[textDocument.uri];
-	delete globalCompileLock[textDocument.uri];
-	delete globalPendingCompile[textDocument.uri];
-
-	return await convertAnvilCompilerResultToDiagnostics(result, textDocument);
-}
-
-connection.onDidChangeWatchedFiles(_change => {
-	// Monitored files have change in VSCode
-	connection.console.log('We received a file change event');
 });
 
+
+
+
+
+//
+// BEGIN
+//
 
 // Make the text document manager listen on the connection
 // for open, change and close text document events
