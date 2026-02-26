@@ -348,8 +348,8 @@ export class AnvilAstNode {
    * ------------------------- */
 
   get event(): string | null {
-    const tid = this.traverse("action_event", "tid").resolveAs(z.number());
-    const eid = this.traverse("action_event", "eid").resolveAs(z.number());
+    const tid = this.traverse("event", "tid").resolveAs(z.number());
+    const eid = this.traverse("event", "eid").resolveAs(z.number());
     if (tid !== null && eid !== null) {
       return `t${tid} e${eid}`;
     }
@@ -513,6 +513,7 @@ export class AnvilAst {
     }
 
     const locations = this.orderedLocations.get(filename);
+    console.log(`Getting all locations for file ${filename}, total found: ${locations?.length ?? 0}`);
     for (const loc of locations ?? []) {
       const node = this.goTo(loc);
       if (!node) {

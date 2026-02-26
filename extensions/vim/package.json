@@ -48,6 +48,12 @@
             "type": "string",
             "default": "",
             "description": "Path to the Anvil compiler binary. Defaults to 'anvil' in your PATH."
+          },
+          "anvil.inlayHints.timingInfo": {
+            "scope": "window",
+            "type": "boolean",
+            "default": true,
+            "description": "Controls whether inlay hints denoting event timings are shown in the editor."
           }
         }
     }

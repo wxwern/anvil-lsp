@@ -15,6 +15,7 @@ import {
 	FileChangeType,
 	TextDocumentPositionParams,
 	CompletionItem,
+	InlayHintKind,
 } from 'vscode-languageserver/node';
 
 import {
@@ -85,7 +86,8 @@ connection.onInitialize((params: InitializeParams) => {
 			},
 			definitionProvider: true,
 			referencesProvider: true,
-			hoverProvider: true
+			hoverProvider: true,
+			inlayHintProvider: true
 		}
 	};
 	if (hasWorkspaceFolderCapability) {
@@ -202,6 +204,7 @@ connection.onDidChangeConfiguration(change => {
 		);
 	}
 	connection.languages.diagnostics.refresh();
+	connection.languages.inlayHint.refresh();
 });
 
 documents.onDidClose(e => {
@@ -431,6 +434,74 @@ connection.onCompletionResolve(async (item: CompletionItem) => {
 		};
 	}
 	return item;
+});
+
+
+// Inlay Hints
+connection.languages.inlayHint.on(async (params) => {
+	const uri = params.textDocument.uri;
+	const settings = await documentSettings.get(uri);
+
+	if (!(settings.inlayHints?.timingInfo)) {
+		return [];
+	}
+
+	const anvilDocument = documentAnvilManagers.get(uri);
+	if (!anvilDocument) return [];
+
+	if (!anvilDocument.anvilAst) {
+		await anvilDocument.compile(settings);
+	}
+
+	if (!anvilDocument.anvilAst) {
+		console.log(`AST not yet available for document ${uri}`);
+		return [];
+	}
+
+	const lineCount = anvilDocument.textDocument.lineCount;
+
+	const locs = anvilDocument.anvilAst.getAll(anvilDocument.filepath);
+
+	let inlineInject: {[lineno: number]: string} = [];
+	let maxTextLen = 0;
+
+	for (let loc of locs) {
+		const node = anvilDocument.anvilAst?.goTo(loc);
+		if (!node) continue;
+		const event = node.event;
+		if (!event) continue;
+
+		const lspPos = AnvilLspUtils.anvilLocToLspLoc(loc.span.start);
+		inlineInject[lspPos.line] = event;
+		maxTextLen = Math.max(maxTextLen, event.length);
+	}
+
+	maxTextLen = Math.pow(2, Math.ceil(Math.log2(maxTextLen)));
+
+	console.log(`Found ${Object.keys(inlineInject)} inlay hints for document ${uri}`);
+
+	const inlineRanges: [number, string][] = [];
+	for (let line = 0; line < lineCount; line++) {
+		if (inlineInject[line]) {
+			const text = inlineInject[line];
+			if (text.length < maxTextLen) {
+				// pad with spaces to ensure inlay hints are aligned
+				inlineRanges.push([line, ' '.repeat(maxTextLen - text.length) + text]);
+			} else {
+				inlineRanges.push([line, text]);
+			}
+		} else {
+			inlineRanges.push([line, ' '.repeat(maxTextLen)]);
+		}
+	}
+
+	return inlineRanges.map(([position, text]) => {
+		return {
+			position: { line: position, character: 0 },
+			label: text,
+			kind: InlayHintKind.Type
+		};
+	});
 });
 
 //
