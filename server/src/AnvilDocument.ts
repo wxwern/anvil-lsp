@@ -7,7 +7,6 @@ import { AnvilLspUtils, AnvilServerSettings } from "./AnvilLspUtils";
 export class AnvilDocument {
     private _textDocument: TextDocument | null = null;
 
-    private _anvilSettings: AnvilServerSettings | null = null;
     private _anvilAst: AnvilAst | null = null;
     private _anvilErrors: AnvilCompilationResult["errors"] | null = null;
     private _postAstTextEdited: ({add: Range} | {del: Range})[] = [];
@@ -46,10 +45,6 @@ export class AnvilDocument {
         return this._anvilAst !== null && this._postAstTextEdited.length === 0;
     }
 
-    public get anvilLastCompileLspSettings(): AnvilServerSettings | null {
-        return this._anvilSettings;
-    }
-
     // Actions
 
     private _compileLock: Promise<boolean> | null = null;
@@ -57,7 +52,7 @@ export class AnvilDocument {
     public async compile(settings: AnvilServerSettings): Promise<boolean> {
         if (this._compileLock) {
             const result = await this._compileLock;
-            if (this.anvilResultsUpToDate && AnvilLspUtils.settingsEqual(this._anvilSettings ?? {}, settings)) {
+            if (this.anvilResultsUpToDate) {
                 return result;
             }
             // otherwise, we need to recompile to update the AST and clear the post-AST edits
@@ -73,15 +68,28 @@ export class AnvilDocument {
 
             const compiler = new AnvilCompiler(settings.executablePath, settings.projectRoot);
 
+            // backup pre-compile state
+            const prevAst = this._anvilAst;
+            const prevHistory = this._postAstTextEdited;
+
+            // reset AST cache at the moment of compilation
             this.resetAstCache();
             const result = await compiler.compile([filePath], fileData);
 
-            this._anvilSettings = settings;
+            // check for a new AST or to restore
             if (result.ast) {
+                // success, update AST cache
                 this._anvilAst = result.ast ?? null;
+            } else {
+                // failed, restore AST cache
+                this._anvilAst = prevAst;
+                this._postAstTextEdited = [...prevHistory, ...this._postAstTextEdited];
             }
 
+            // update errors regardless of success, since they are relevant in both cases
             this._anvilErrors = result.errors ?? null;
+
+            // release lock
             this._compileLock = null;
             return !!result.ast;
         })();
@@ -279,7 +287,6 @@ export class AnvilDocument {
     }
 
     private resetAstCache() {
-        this._anvilSettings = null;
         this._anvilAst = null;
         this._anvilErrors = null;
         this._postAstTextEdited = [];
