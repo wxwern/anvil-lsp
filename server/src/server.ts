@@ -76,10 +76,7 @@ connection.onInitialize((params: InitializeParams) => {
 			textDocumentSync: TextDocumentSyncKind.Incremental,
 			completionProvider: {
 				resolveProvider: true,
-				// triggers
-				triggerCharacters: [
-					'.', '*'
-				]
+				triggerCharacters: AnvilCompletionGenerator.TRIGGER_CHARS
 			},
 			diagnosticProvider: {
 				interFileDependencies: false,
@@ -430,14 +427,7 @@ connection.onCompletion((params): CompletionItem[] => {
 		return [];
 	}
 
-	const textBeforeCursor = anvilDocument.textDocument.getText({
-		start: { line: params.position.line, character: 0 },
-		end: params.position
-	});
-
-	console.log(`Completion event received. Text before cursor: "${textBeforeCursor}"`);
-
-	const completionDetails = AnvilCompletionGenerator.getCompletions(textBeforeCursor, anvilDocument);
+	const completionDetails = AnvilCompletionGenerator.getCompletions(params.position, anvilDocument);
 
 	console.log(`Found ${completionDetails.length} completion(s) for the current context.`);
 

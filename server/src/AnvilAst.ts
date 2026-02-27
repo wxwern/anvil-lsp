@@ -389,7 +389,7 @@ export class AnvilAstNode {
   }
 
   get name(): string | null {
-    return this.names?.[0] ?? null;;
+    return this.names.length === 1 ? this.names[0] : null;
   }
 
   get names(): string[] {
@@ -401,6 +401,13 @@ export class AnvilAstNode {
     let ids = this.down("ids").resolveAs(z.string().array());
     if (ids !== null) {
       return [...ids];
+    }
+
+    switch (this.kind) {
+      case "channel_def":
+        const left = this.down("endpoint_left").resolveAs(z.string());
+        const right = this.down("endpoint_right").resolveAs(z.string());
+        return [left, right].filter((n): n is string => n !== null);
     }
 
     return [];
