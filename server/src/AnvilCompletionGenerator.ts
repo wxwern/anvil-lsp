@@ -1,36 +1,52 @@
-import {CompletionItem, CompletionItemKind, Position} from "vscode-languageserver";
+import {CompletionItem, CompletionItemKind, InsertTextFormat, Position} from "vscode-languageserver";
 import {AnvilAstNode} from "./AnvilAst";
-import {AnvilDescriptionGenerator} from "./AnvilDescriptionGenerator";
 import {AnvilDocument} from "./AnvilDocument";
 
 export class AnvilCompletionDetail {
   constructor(
     public readonly label: string,
+    public readonly insertText: string = label,
     public readonly lspKind: CompletionItemKind,
     public readonly hint: string,
-    private detailsFunc: () => Promise<string>
+    private documentation: { node?: AnvilAstNode, desc?: string } = {},
   ) { }
 
-  public async details(): Promise<string> {
-    return this.detailsFunc();
+  private get isSnippet() {
+    return this.insertText != this.label;
   }
 
-  public lspCompletionItem(): CompletionItem {
+  public lspCompletionItem(options?: { allowOOOSnippet?: boolean }): CompletionItem {
+    const outOfOrder = options?.allowOOOSnippet ?? false;
+    let insertText = this.insertText;
+
+    if (this.isSnippet && !outOfOrder) {
+      const re = /^(.+)\$\d+/g;
+      const match = re.exec(this.insertText);
+      if (match) {
+        insertText = match[1];
+      }
+    }
+
+    const d = this.documentation;
+
     return {
       label: this.label,
       kind: this.lspKind,
-      data: this,
-      detail: this.hint
+      data: "node" in d ? { filepath: d.node?.filepath, nodepath: d.node?.nodepath, desc: d.desc } : d,
+      detail: this.hint,
+      insertText: insertText,
+      insertTextFormat: this.isSnippet ? InsertTextFormat.Snippet : InsertTextFormat.PlainText,
     };
   }
 }
 
 export class AnvilCompletionGenerator {
 
-  public static readonly TRIGGER_CHARS = ['.', ',', '*', '{', '(', '[', ';', '=', ' '];
+  public static readonly TRIGGER_CHARS = ['.', ',', '*', '{', '(', '[', ':', ';', '=', '@', ' '];
 
   public static readonly SPACER_REGEX_GROUP = "(^|[\\s\\(\\[{])";
   public static readonly IDENTIFIER_REGEX_GROUP = "([a-zA-Z_][a-zA-Z0-9_]*)";
+  public static readonly LIFETIME_IDENTIFIER_REGEX_GROUP = "(#[~0-9]+|[a-zA-Z_][a-zA-Z0-9_]*[+0-9]*)";
 
 
   private static getPrefixAtPosition(position: Position, document: AnvilDocument, options?: { fast?: boolean }): string {
@@ -46,23 +62,37 @@ export class AnvilCompletionGenerator {
     return prefix;
   }
 
+
+
+
   public static getCompletions(position: Position, document: AnvilDocument): AnvilCompletionDetail[] {
 
     // Check for special syntax heuristics first and return early for any matches.
-    const registerCompletions = this.checkReadRegisterHeuristics(position, document);
-    if (registerCompletions) {
-      return registerCompletions;
+    const readRegCompletions = this.checkReadRegisterHeuristics(position, document);
+    if (readRegCompletions !== null) {
+      return readRegCompletions;
+    }
+
+    const writeRegCompletions = this.checkWriteRegisterHeuristics(position, document);
+    if (writeRegCompletions !== null) {
+      return writeRegCompletions;
     }
 
     const sendRecvCompletions = this.checkSendRecvHeuristics(position, document);
-    if (sendRecvCompletions) {
+    if (sendRecvCompletions !== null) {
       return sendRecvCompletions;
+    }
+
+    const timingAnnotCompletions = this.checkTimingAnnotHeuristics(position, document);
+    if (timingAnnotCompletions !== null) {
+      return timingAnnotCompletions;
     }
 
 
     // All identifiers from the AST.
     const ast = document.anvilAst;
     let completionItems: AnvilCompletionDetail[] = [];
+
     completionItems.push(...(ast?.getAll().flatMap((loc) => {
       const node = ast.goTo(loc);
       if (!node) return null;
@@ -84,9 +114,10 @@ export class AnvilCompletionGenerator {
 
         list.push(new AnvilCompletionDetail(
           name,
+          name,
           lspKind,
           hint || '',
-          () => AnvilDescriptionGenerator.describeNode(node, document)
+          { node }
         ));
       }
 
@@ -94,14 +125,17 @@ export class AnvilCompletionGenerator {
     }).filter(c => c).map(c => c!) ?? []));
 
 
+
+
     // All Anvil keywords and operators.
-    const populateKeywords = (labels: string[], hint: string, kind?: CompletionItemKind) => {
+    const populateKeywords = (labels: string[], hint: string, type?: string, kind?: CompletionItemKind) => {
       completionItems.push(...labels.map((label) => {
         return new AnvilCompletionDetail(
           label,
+          label,
           kind || CompletionItemKind.Keyword,
-          hint,
-          async () => `Anvil built-in keyword \`${label}\` (${hint})`
+          '(' + hint + ')',
+          { desc: `Anvil built-in ${hint} ${type ?? 'keyword'} \`${label}\`` }
         );
       }));
     };
@@ -109,24 +143,26 @@ export class AnvilCompletionGenerator {
     populateKeywords([
       'left', 'right', 'extern',
       'shared', 'assigned by', 'import', 'generate', 'generate_seq',
-    ], '(modifier)');
+    ], 'modifier');
 
     populateKeywords([
       'logic', 'int', 'dyn',
-    ], '(type)');
+    ], 'type');
 
     populateKeywords([
       'struct', 'enum', 'proc', 'spawn', 'type', 'func', 'const', 'reg', 'chan',
-    ], '(declaration)');
+    ], 'declaration');
 
     populateKeywords([
       'call', 'loop', 'recursive', 'if', 'else', 'try', 'recurse', 'recv', 'send',
       'dprint', 'dfinish', 'set', 'cycle', 'sync',  'match', 'put',  'ready', 'in',
       'probe',
-    ], '(control)');
+    ], 'control');
 
-    populateKeywords(['with'], '(other)');
-    populateKeywords(['let'], '(other)');
+    populateKeywords(['with'], 'misc');
+    populateKeywords(['let'], 'binding');
+
+    populateKeywords(['@#', '@dyn', '~'], 'timing', 'token');
 
     completionItems.push(...[
       ['>>', 'wait', 'wait for evaluation of lhs before evaluating rhs'],
@@ -136,9 +172,10 @@ export class AnvilCompletionGenerator {
       let kind: CompletionItemKind = CompletionItemKind.Operator;
       return new AnvilCompletionDetail(
         label,
+        label,
         kind,
         '(' + hint + ')',
-        async () => `Anvil built-in operator \`${label}\` (${hint}) - ${detail}`
+        { desc: `Anvil built-in ${hint} operator \`${label}\`\n\n---\n\n${detail}` }
       );
     }));
 
@@ -148,10 +185,13 @@ export class AnvilCompletionGenerator {
 
 
 
+
+
+
   private static checkReadRegisterHeuristics(position: Position, document: AnvilDocument): AnvilCompletionDetail[] | null {
     const prefix = this.getPrefixAtPosition(position, document);
 
-    // Heuristic matches when cursor is at: *register_name
+    // Heuristic matches when cursor is at: "*register_name"
     const regex = new RegExp(`${this.SPACER_REGEX_GROUP}\\*${this.IDENTIFIER_REGEX_GROUP}?$`, "g");
     console.log('Checking register completion heuristic with regex:', regex);
     const match = regex.exec(prefix);
@@ -178,18 +218,62 @@ export class AnvilCompletionGenerator {
 
     return matchingRegs.map(r => new AnvilCompletionDetail(
       r.name!,
+      r.name!,
       CompletionItemKind.Variable,
       '(register)',
-      () => AnvilDescriptionGenerator.describeNode(r, document)
+      { node: r }
     ));
   }
+
+
+
+
+
+  private static checkWriteRegisterHeuristics(position: Position, document: AnvilDocument): AnvilCompletionDetail[] | null {
+    const prefix = this.getPrefixAtPosition(position, document);
+
+    // Heuristic matches when cursor is at: "set register_name :=" excluding the := operator.
+    const regex = new RegExp(`${this.SPACER_REGEX_GROUP}set\\s+${this.IDENTIFIER_REGEX_GROUP}?$`, "g");
+    console.log('Checking write register completion heuristic with regex:', regex);
+    const match = regex.exec(prefix);
+
+    if (!match) {
+      console.log('Write register completion heuristic did not match.');
+      return null;
+    }
+
+    console.log('Write register completion heuristic matched!');
+    const regPartialNamePrefix = match[2] || '';
+    const ast = document.anvilAst;
+    if (!ast) return null;
+
+    // Locate registers in the closest proc scope, and filter by prefix.
+    const regs = ast.goToClosest(
+      document.filepath, position.line, position.character,
+      n => n.kind === 'proc_def'
+    )?.traverse("body", "regs").children;
+
+    if (!regs) return null;
+
+    const matchingRegs = regs.filter(r => r.name?.startsWith(regPartialNamePrefix));
+
+    return matchingRegs.map(r => new AnvilCompletionDetail(
+      r.name!,
+      r.name! + "$1 := $0",
+      CompletionItemKind.Variable,
+      '(register)',
+      { node: r }
+    ));
+  }
+
+
 
 
 
   private static checkSendRecvHeuristics(position: Position, document: AnvilDocument): AnvilCompletionDetail[] | null {
     const prefix = this.getPrefixAtPosition(position, document);
 
-    // Heuristic matches when cursor is at: send/recv endpoint_name.message_name
+    // Heuristic matches when cursor is at: "send/recv endpoint_name.message_name(" excluding the trailing "("
     const regex = new RegExp(`${this.SPACER_REGEX_GROUP}(send|recv)\\s+(${this.IDENTIFIER_REGEX_GROUP}(\\.(${this.IDENTIFIER_REGEX_GROUP})?)?)?$`, "g");
     console.log('Checking send/recv completion heuristic with regex:', regex);
     const match = regex.exec(prefix);
@@ -240,9 +324,10 @@ export class AnvilCompletionGenerator {
       // If we haven't completed the endpoint, return endpoints.
       return endpointCandidates.flatMap(e => e.names.map(n => new AnvilCompletionDetail(
         n,
+        n + '.',
         CompletionItemKind.Interface,
         '(endpoint)',
-        () => AnvilDescriptionGenerator.describeNode(e, document)
+        { node: e }
       )));
     }
 
@@ -281,11 +366,141 @@ export class AnvilCompletionGenerator {
 
     return messageCompletions.map(m => new AnvilCompletionDetail(
       m.name!,
+      m.name! + "($1)$0",
       CompletionItemKind.Method,
       `${isSend ? 'send' : 'recv'} (message)`,
-      () => AnvilDescriptionGenerator.describeNode(m, document)
+      { node: m }
     ));
   }
+
+
+
+
+
+
+  private static checkTimingAnnotHeuristics(position: Position, document: AnvilDocument): AnvilCompletionDetail[] | null {
+    const prefix = this.getPrefixAtPosition(position, document);
+
+    // Heuristic matches when cursor is after an "@" symbol, indicating a timing annotation.
+    const regex = new RegExp(
+      `${this.SPACER_REGEX_GROUP}(left|right)\\s+${this.IDENTIFIER_REGEX_GROUP}\\s*:\\s*\\(.*?(@${this.LIFETIME_IDENTIFIER_REGEX_GROUP}?(\\)\\s+(@)?${this.LIFETIME_IDENTIFIER_REGEX_GROUP}?( *(-)? *(@)?${this.LIFETIME_IDENTIFIER_REGEX_GROUP}?)?)?)?$`,
+      "g"
+    );
+    const match = regex.exec(prefix);
+    console.log('Checking timing annotation completion heuristic with regex:', regex);
+    if (!match) {
+      console.log('Timing annotation completion heuristic did not match.');
+      return null;
+    }
+
+    const identifier = match[2];
+    const hasFirstAnnot = !!match[4];
+    const firstAnnotPrefix = match[5] || '';
+    const hasRangeStartAnnot = !!match[6];
+    const hasRangeStartAtSign = !!match[7];
+    const rangeStartAnnotPrefix = match[8] || '';
+    const hasRangeEndAnnot = !!match[9];
+    const hasRangeMidDash = !!match[10];
+    const hasRangeEndAtSign = !!match[11];
+    const rangeEndAnnotPrefix = match[12] || '';
+
+    if (!hasFirstAnnot) {
+      console.log('Timing annotation completion heuristic did not match (first annotation not yet detected).');
+      return null;
+    }
+
+    console.log(`Parsed < | hasFirst: ${hasFirstAnnot} | "${firstAnnotPrefix}" | hasRangeStart: ${hasRangeStartAnnot} | "${rangeStartAnnotPrefix}" | hasRangeEnd: ${hasRangeEndAnnot} | "${rangeEndAnnotPrefix}" >`);
+    console.log('Timing annotation completion heuristic matched!');
+
+    let completionItems: AnvilCompletionDetail[] = [];
+
+    const ast = document.anvilAst;
+    if (!ast) return completionItems;
+
+    const messageDefs = ast.goToClosest(
+      document.filepath, position.line, position.character,
+      n => n.kind === 'channel_class_def'
+    )?.traverse("messages").children
+    .filter(n => n.kind === 'message_def')
+    .filter(n => n.name !== identifier) || [];
+
+
+    if (!hasRangeStartAnnot) {
+      // lifetime part
+      completionItems.push(new AnvilCompletionDetail(
+        '#N',
+        '#$0',
+        CompletionItemKind.TypeParameter,
+        '(fixed lifetime)',
+        { desc: 'Valid for N cycles' }
+      ));
+
+      completionItems.push(...messageDefs.flatMap(m => [
+        new AnvilCompletionDetail(
+          m.name!,
+          m.name!,
+          CompletionItemKind.TypeParameter,
+          '(relative lifetime)',
+          { node: m, desc: 'Valid for the same amount of time this endpoint is valid.' }
+        ),
+      ]));
+
+    } else {
+      if (hasRangeStartAnnot && !hasRangeStartAtSign) {
+        return [];
+      }
+
+      if (hasRangeEndAnnot && (!hasRangeEndAtSign || !hasRangeMidDash)) {
+        return [];
+      }
+
+      // synchronisation part
+      completionItems.push(new AnvilCompletionDetail(
+        '#N',
+        '#$0',
+        CompletionItemKind.TypeParameter,
+        '(fixed sync)',
+        { desc: 'Valid beginning after every N cycles from start\n(`kN for k >= 1`)' }
+      ));
+
+      completionItems.push(new AnvilCompletionDetail(
+        '#M~N',
+        '#$1~$0',
+        CompletionItemKind.TypeParameter,
+        '(fixed sync)',
+        { desc: 'Valid beginning Mth cycle, and beginning every N cycles after (`M+kN for k >= 0`)' }
+      ));
+
+      completionItems.push(new AnvilCompletionDetail(
+        'dyn',
+        'dyn',
+        CompletionItemKind.TypeParameter,
+        '(dynamic sync)',
+        { desc: 'Dynamically synchronised validity.' }
+      ));
+
+      completionItems.push(...messageDefs.flatMap(m => [
+        new AnvilCompletionDetail(
+          m.name!,
+          m.name!,
+          CompletionItemKind.TypeParameter,
+          '(relative sync)',
+          { node: m, desc: 'Valid starting when this endpoint is valid.' }
+        ),
+        new AnvilCompletionDetail(
+          m.name! + "+N",
+          m.name! + "+$0",
+          CompletionItemKind.TypeParameter,
+          '(relative sync)',
+          { node: m, desc: 'Valid starting N cycles after this endpoint becomes valid.' }
+        ),
+      ]));
+    }
+    return completionItems;
+  }
+
+
+
 
 
 

@@ -267,11 +267,11 @@ export class AnvilDescriptionGenerator {
     /**
      * Describes the given node succintly, returning a markdown string that can be used in hover or other LSP features.
      */
-    static async describeNode(
+    static describeNode(
         node: AnvilAstNode,
         anvilDocument: AnvilDocument,
         supplementaryDocuments?: (f: AnvilAstNode) => AnvilDocument | null
-    ): Promise<string> {
+    ): string {
 
         let documentationSegment = "";
         let codeSegment = "";
@@ -290,7 +290,7 @@ export class AnvilDescriptionGenerator {
             return this.getNodeDefinitionStr(node, anvilDocument, supplementaryDocuments, { expanded: defs.length <= 1 ? "auto" : false });
         }
 
-        const defStrs = await Promise.all(
+        const defStrs = (
             defs
             .map(def => anvilDocument.anvilAst?.goTo(def))
             .filter(def => def)

@@ -27,7 +27,15 @@ To install the language server, view the [installation instructions](#installati
 - [x] Autocompletion
     - [x] Anvil keywords
     - [x] Document symbols
-    - [ ] Context-aware suggestions
+    - [x] Context-aware suggestions
+        - [x] Endpoint message send/receive (`send`/`recv`) syntax
+        - [x] Register read (`*`) syntax
+        - [x] Register assign (`set`) syntax
+        - [ ] Record init (`Rec::{field =`) syntax
+        - [ ] Record read (`.field`) syntax
+        - [x] Lifetime annotation syntax
+        - [ ] Applicable input types only
+        - ... TBC
 - [x] Inlay Hints
     - [x] Timing Information
 - [ ] Rename/Refactor symbol

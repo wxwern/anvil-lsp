@@ -28,7 +28,7 @@ import { LazyMap } from './LazyMap';
 import { AnvilDescriptionGenerator } from './AnvilDescriptionGenerator';
 import {AnvilCompletionDetail, AnvilCompletionGenerator} from './AnvilCompletionGenerator';
 import {text} from 'stream/consumers';
-import {AnvilAstNode} from './AnvilAst';
+import {AnvilAbsoluteLocation, AnvilAstNode, AnvilAstNodePath, AnvilSpan} from './AnvilAst';
 
 
 //
@@ -419,7 +419,7 @@ connection.onReferences(async (params) => {
 
 
 // Completions
-connection.onCompletion((params): CompletionItem[] => {
+connection.onCompletion(async (params) => {
 
 	const anvilDocument = documentAnvilManagers.get(params.textDocument.uri);
 	if (!anvilDocument) {
@@ -428,20 +428,46 @@ connection.onCompletion((params): CompletionItem[] => {
 	}
 
 	const completionDetails = AnvilCompletionGenerator.getCompletions(params.position, anvilDocument);
+	const settings = await documentSettings.get(params.textDocument.uri);
 
 	console.log(`Found ${completionDetails.length} completion(s) for the current context.`);
 
-	return completionDetails.map(c => c.lspCompletionItem());
+	return completionDetails.map(c => c.lspCompletionItem({ allowOOOSnippet: settings.snippets?.fancy }));
 });
 
 connection.onCompletionResolve(async (item: CompletionItem) => {
-	const data = item.data;
-	if (data instanceof AnvilCompletionDetail) {
+	const filepath = item.data?.filepath;
+	const nodepath = item.data?.nodepath;
+	const plainDesc = item.data?.desc;
+
+	if (plainDesc && typeof plainDesc === 'string') {
 		item.documentation = {
 			kind: 'markdown',
-			value: await data.details()
+			value: plainDesc
+		};
+		return item;
+	}
+	if (filepath && typeof filepath === 'string' && Array.isArray(nodepath)) {
+		const fileUri = 'file://' + filepath;
+		const nodepathResolved = nodepath as AnvilAstNodePath;
+
+		const doc = documentAnvilManagers.get(fileUri);
+		if (doc) {
+			const node = doc.anvilAst?.goToRoot(filepath)?.traverse(...nodepathResolved);
+			if (node) {
+				const defDesc = AnvilDescriptionGenerator.describeNode(node, doc, getAnvilDocumentForNode);
+				item.documentation = {
+					kind: 'markdown',
+					value: plainDesc + '\n\n---\n\n' + defDesc
+				};
+				return item;
+			}
 		};
 	}
+	item.documentation = {
+		kind: 'markdown',
+		value: 'No additional information available'
+	};
 	return item;
 });
 

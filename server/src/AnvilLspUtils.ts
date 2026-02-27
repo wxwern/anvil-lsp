@@ -5,6 +5,7 @@ export interface AnvilServerSettings {
     maxNumberOfProblems: number;
     projectRoot?: string;
     executablePath?: string;
+    snippets?: { fancy?: boolean; };
     inlayHints?: { timingInfo?: boolean };
     debug?: boolean;
 }
