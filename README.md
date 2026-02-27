@@ -5,7 +5,7 @@
 
 ## Requires
 
-- Anvil [`15eea4e`](https://github.com/wxwern/anvil/tree/15eea4e) or later with **experimental AST output** support.
+- Anvil [`15eea4e` or later](https://github.com/wxwern/anvil/tree/add-annotated-ast-output) with **experimental AST output** support.
 
 - [Node.js](https://nodejs.org/en) version 22 or later.
 
