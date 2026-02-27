@@ -28,6 +28,7 @@ import { LazyMap } from './LazyMap';
 import { AnvilDescriptionGenerator } from './AnvilDescriptionGenerator';
 import {AnvilCompletionDetail, AnvilCompletionGenerator} from './AnvilCompletionGenerator';
 import {text} from 'stream/consumers';
+import {AnvilAstNode} from './AnvilAst';
 
 
 //
@@ -140,6 +141,14 @@ const documentAnvilManagers = LazyMap.onCacheMiss<string, AnvilDocument | undefi
 	const doc = documents.get(resource);
 	return doc ? AnvilDocument.fromTextDocument(doc) : undefined;
 });
+
+const getAnvilDocumentForNode = (node: AnvilAstNode) => {
+	const fullpath = node.location?.fullpath;
+	if (!fullpath) return null;
+
+	const doc = documentAnvilManagers.get('file://' + fullpath);
+	return doc ?? null;
+}
 
 
 
@@ -302,7 +311,7 @@ connection.onHover(async (params) => {
 	return {
 		contents: {
 			kind: 'markdown',
-			value: await AnvilDescriptionGenerator.describeNode(node, anvilDocument)
+			value: await AnvilDescriptionGenerator.describeNode(node, anvilDocument, getAnvilDocumentForNode)
 		}
 	};
 

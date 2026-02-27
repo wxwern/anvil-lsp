@@ -12,7 +12,7 @@ const AnvilSpanSchema = z.object({
 export type AnvilSpan = z.infer<typeof AnvilSpanSchema>;
 
 const AnvilDefSpanSchema = AnvilSpanSchema.extend({
-  cunit: z.string().nullable().optional(),
+  file_name: z.string().nullable().optional(),
 });
 export type AnvilDefSpan = z.infer<typeof AnvilDefSpanSchema>;
 
@@ -365,7 +365,7 @@ export class AnvilAstNode {
     const span = this.span;
     if (!span) return null;
 
-    const filename = this.root.resolveAs(AnvilCompUnitSchema)?.file_name;
+    const filename = this.resolveRoot()?.file_name;
     if (!filename) return null;
 
     return new AnvilAbsoluteLocation(this._fsBasepath, filename, span);
@@ -377,7 +377,7 @@ export class AnvilAstNode {
 
   get definitions(): AnvilAbsoluteLocation[] {
     const defSpan = this.traverse("def_span").resolveAs(AnvilDefSpanSchema.array()) ?? [];
-    return defSpan.map((d) => new AnvilAbsoluteLocation(this._fsBasepath, d.cunit || this._root.file_name, d));
+    return defSpan.map((d) => new AnvilAbsoluteLocation(this._fsBasepath, d.file_name || this._root.file_name, d));
   }
 }
 
@@ -568,6 +568,17 @@ export class AnvilAst {
     return best?.loc ?? null;
   }
 
+  /* --------------------------
+   * Helpers
+   * ------------------------- */
+
+  resolveRoot(filename: string): AnvilCompUnit | null {
+    const rootNode = this.roots.get(filename);
+    if (!rootNode) {
+      return null;
+    }
+    return rootNode.resolveRoot();
+  }
 
   /* -------------------------
    * Internal Utilities
@@ -611,7 +622,7 @@ export class AnvilAst {
         // Populate reference index for reverse definition lookup
         const defSpans = spannable.def_span ?? [];
         for (const defSpan of defSpans) {
-          const defLocation = new AnvilAbsoluteLocation(fbasepath, defSpan.cunit || fpath, defSpan);
+          const defLocation = new AnvilAbsoluteLocation(fbasepath, defSpan.file_name || fpath, defSpan);
           const defLocId = defLocation.id();
           if (!this.referenceIndex.has(defLocId)) {
             this.referenceIndex.set(defLocId, []);
@@ -624,6 +635,7 @@ export class AnvilAst {
       }
     })()
 
+    // Recursively map child list nodes
     if (Array.isArray(node)) {
       let sum = 0;
       for (let i = 0; i < node.length; i++) {
@@ -633,9 +645,16 @@ export class AnvilAst {
       return 1 + sum;
     }
 
+    // Recursively map child object nodes
     if (node && typeof node === "object") {
       let sum = 0;
       for (let key in node) {
+
+        if (["event_graphs"].includes(key)) {
+          // Skip deep mapping, is supplementary data only.
+          continue;
+        }
+
         const child = (node as any)[key];
         sum += this.deepMapNode(child, fbasepath, fpath, [...path, key]);
       }

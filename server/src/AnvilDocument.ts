@@ -1,5 +1,5 @@
 import { TextDocument } from "vscode-languageserver-textdocument";
-import { AnvilAst, AnvilAstNode, AnvilSpan, AnvilPos } from "./AnvilAst";
+import { AnvilAst, AnvilAstNode, AnvilSpan, AnvilPos, AnvilAbsoluteLocation } from "./AnvilAst";
 import { Range, Position, TextDocumentContentChangeEvent } from "vscode-languageserver";
 import { AnvilCompilationResult, AnvilCompiler } from "./AnvilCompiler";
 import { AnvilLspUtils, AnvilServerSettings } from "./AnvilLspUtils";
