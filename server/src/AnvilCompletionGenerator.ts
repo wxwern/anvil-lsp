@@ -40,71 +40,79 @@ export class AnvilCompletionGenerator {
 
     // All identifiers from the AST.
 
-    completionItems.push(...(ast?.getAll().map((loc) => {
+    completionItems.push(...(ast?.getAll().flatMap((loc) => {
       const node = ast.goTo(loc);
       if (!node) return null;
 
-      const nodeKind = node.traverse("kind").resolveAs(z.string());
-      const name = node?.traverse("name").resolveAs(z.string());
+      const nodeKind = node.kind;
+
+      let identifiers: string[] = [];
+      identifiers.push(...node.names);
 
       let lspKind: CompletionItemKind = CompletionItemKind.Text;
       let hint: string | undefined = undefined;
 
-      if (!name) return null;
+      let list: AnvilCompletionDetail[] = [];
 
-      switch (nodeKind) {
-        case 'expr': {
-          lspKind = CompletionItemKind.Variable;
-          break;
+      for (const name of identifiers) {
+        if (!name) return null;
+
+        switch (nodeKind) {
+          case 'expr': {
+            lspKind = CompletionItemKind.Variable;
+            break;
+          }
+          case 'reg_def': {
+            lspKind = CompletionItemKind.Variable;
+            hint = `(register)`;
+            break;
+          }
+          case 'channel_class_def': {
+            lspKind = CompletionItemKind.Class;
+            hint = `(channel)`;
+            break;
+          }
+          case 'struct_def': {
+            lspKind = CompletionItemKind.Struct;
+            hint = `(struct)`;
+            break;
+          }
+          case 'func_def': {
+            lspKind = CompletionItemKind.Function;
+            hint = `(function)`;
+            break;
+          }
+          case 'proc_def': {
+            lspKind = CompletionItemKind.Module;
+            hint = `(process)`;
+            break;
+          }
+          case 'macro_def': {
+            lspKind = CompletionItemKind.Constant;
+            hint = `(macro)`;
+            break;
+          }
+          case 'endpoint_def': {
+            lspKind = CompletionItemKind.Interface;
+            hint = `(endpoint)`;
+            break;
+          }
+          case 'message_def': {
+            lspKind = CompletionItemKind.Method;
+            hint = `(message)`;
+            break;
+          }
         }
-        case 'reg_def': {
-          lspKind = CompletionItemKind.Variable;
-          hint = `(register)`;
-          break;
-        }
-        case 'channel_class_def': {
-          lspKind = CompletionItemKind.Class;
-          hint = `(channel)`;
-          break;
-        }
-        case 'struct_def': {
-          lspKind = CompletionItemKind.Struct;
-          hint = `(struct)`;
-          break;
-        }
-        case 'func_def': {
-          lspKind = CompletionItemKind.Function;
-          hint = `(function)`;
-          break;
-        }
-        case 'proc_def': {
-          lspKind = CompletionItemKind.Module;
-          hint = `(process)`;
-          break;
-        }
-        case 'macro_def': {
-          lspKind = CompletionItemKind.Constant;
-          hint = `(macro)`;
-          break;
-        }
-        case 'endpoint_def': {
-          lspKind = CompletionItemKind.Interface;
-          hint = `(endpoint)`;
-          break;
-        }
-        case 'message_def': {
-          lspKind = CompletionItemKind.Method;
-          hint = `(message)`;
-          break;
-        }
+
+        list.push(new AnvilCompletionDetail(
+          name,
+          lspKind,
+          hint || '',
+          () => AnvilDescriptionGenerator.describeNode(node, document)
+        ));
       }
 
-      return new AnvilCompletionDetail(
-        name,
-        lspKind,
-        hint || '',
-        () => AnvilDescriptionGenerator.describeNode(node, document)
-      );
+      return list;
     }).filter(c => c).map(c => c!) ?? []));
 
 

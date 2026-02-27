@@ -83,12 +83,10 @@ export class AnvilDescriptionGenerator {
 
 
     private static nodeType(n: AnvilAstNode): string | null {
-        const kind = n.traverse("kind").resolveAs(z.string());
-        const type = n.traverse("type").resolveAs(z.string());
-        switch (kind) {
-            case "expr": return type ?? kind;
-            default: return kind || "unknown";
+        switch (n.kind) {
+            case "expr": return n.type ?? "expr";
         }
+        return n.kind;
     }
 
     private static getTextForNode(
@@ -102,8 +100,8 @@ export class AnvilDescriptionGenerator {
 
         let bestDoc = anvilDocument;
 
-        if (node.resolveRoot().file_name ===
-            anvilDocument.anvilAst?.resolveRoot(anvilDocument.filepath)?.file_name) {
+        if (node.filepath ===
+            anvilDocument.anvilAst?.goToRoot(anvilDocument.filepath)?.filepath) {
 
             // node is in the main document
             // we can use the main document for text retrieval
@@ -309,7 +307,7 @@ export class AnvilDescriptionGenerator {
         // populate debug segment
         if (this.DEBUG) {
             debugPathSegment += "---\n**DEBUG**\n"
-            + `**- Node Path:** ${node.path.map(s => `\`${s}\``).join(".")}\n`
+            + `**- Node Path:** ${node.nodepath.map(s => `\`${s}\``).join(".")}\n`
             + `**- Node Kind:** ${kind || "unknown"}\n`
             + `**- Node Span:** ${node.span ? `${node.span.start.line}:${node.span.start.col}-${node.span.end.line}:${node.span.end.col}` : "none"}\n`
             + `**- Node Defs:** ${node.definitions.length}\n`

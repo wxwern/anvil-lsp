@@ -213,18 +213,31 @@ export class AnvilAstNode {
   private _downCache: { [key: string]: AnvilAstNode } = {};
   private _resolveCache: unknown | null | undefined = undefined;
 
-  constructor(fsBasepath: string, root: AnvilCompUnit, path: AnvilAstNodePath = []) {
+  private constructor(fsBasepath: string, root: AnvilCompUnit, path: AnvilAstNodePath = []) {
     this._fsBasepath = fsBasepath;
     this._root = root;
     this._path = path;
   }
 
-  get path(): AnvilAstNodePath {
+  public static of(fsBasepath: string, root: AnvilCompUnit): AnvilAstNode {
+    return new AnvilAstNode(fsBasepath, root, []);
+  }
+
+  get nodepath(): AnvilAstNodePath & { 0?: keyof AnvilCompUnit } {
     return [...this._path];
+  }
+
+  get filepath(): string {
+    return this.resolveRoot().file_name;
   }
 
   get isRoot(): boolean {
     return this._path.length === 0;
+  }
+
+  get isLeaf(): boolean {
+    const node = this.resolve();
+    return typeof node !== "object" || node === null || Object.keys(node).length === 0;
   }
 
   get root(): AnvilAstNode {
@@ -322,7 +335,7 @@ export class AnvilAstNode {
    * Resolves the node at current path and asserts it matches the provided schema.
    * Returns null if resolution fails or if the schema check fails.
    */
-  resolveAs<T>(schema: z.ZodType<T>): T | null {
+  resolveAs<T>(schema: z.ZodType<T>): Readonly<T> | null {
     const resolved = this.resolve();
     if (resolved === null) {
       return null;
@@ -339,8 +352,9 @@ export class AnvilAstNode {
   /**
    * Resolves the root node of the AST.
    */
-  resolveRoot(): AnvilCompUnit {
-    return this.root.resolveAs(AnvilCompUnitSchema)!;
+  resolveRoot(): Readonly<AnvilCompUnit> {
+    // As root is always identical, we can use the cache for fastest lookup
+    return this._root;
   }
 
   /* -------------------------
@@ -357,18 +371,42 @@ export class AnvilAstNode {
     return null;
   }
 
-  get span(): AnvilSpan | null {
-    return this.traverse("span").resolveAs(AnvilSpanSchema) ?? null;
+  get name(): string | null {
+    return this.names?.[0] ?? null;;
+  }
+
+  get names(): string[] {
+    let name = this.down("name").resolveAs(z.string());
+    if (name !== null) {
+      return [name];
+    }
+
+    let ids = this.down("ids").resolveAs(z.string().array());
+    if (ids !== null) {
+      return [...ids];
+    }
+
+    return [];
+  }
+
+  get span(): Readonly<AnvilSpan> | null {
+    return this.down("span").resolveAs(AnvilSpanSchema) ?? null;
+  }
+
+  get kind(): string | null {
+    return this.down("kind").resolveAs(z.string()) ?? null;
+  }
+
+  get type(): string | null {
+    return this.down("type").resolveAs(z.string()) ?? null;
   }
 
   get location(): AnvilAbsoluteLocation | null {
     const span = this.span;
     if (!span) return null;
 
-    const filename = this.resolveRoot()?.file_name;
-    if (!filename) return null;
-
-    return new AnvilAbsoluteLocation(this._fsBasepath, filename, span);
+    const filepath = this.filepath;
+    return new AnvilAbsoluteLocation(this._fsBasepath, filepath, span);
   }
 
   get definition(): AnvilAbsoluteLocation | null {
@@ -376,8 +414,8 @@ export class AnvilAstNode {
   }
 
   get definitions(): AnvilAbsoluteLocation[] {
-    const defSpan = this.traverse("def_span").resolveAs(AnvilDefSpanSchema.array()) ?? [];
-    return defSpan.map((d) => new AnvilAbsoluteLocation(this._fsBasepath, d.file_name || this._root.file_name, d));
+    const defSpan = this.down("def_span").resolveAs(AnvilDefSpanSchema.array()) ?? [];
+    return defSpan.map((d) => new AnvilAbsoluteLocation(this._fsBasepath, d.file_name || this.filepath, d));
   }
 }
 
@@ -426,7 +464,7 @@ export class AnvilAst {
   private constructor(fsBasepath: string, units: AnvilCompUnit[]) {
     for (const unit of units) {
 
-      const rootNode = new AnvilAstNode(fsBasepath, unit, []);
+      const rootNode = AnvilAstNode.of(fsBasepath, unit);
 
       this.roots.set(unit.file_name, rootNode);
       this.orderedLocations.set(unit.file_name, []);
