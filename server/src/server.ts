@@ -333,24 +333,34 @@ connection.onDefinition(async (params) => {
 		await anvilDocument.compile(settings);
 	}
 
-	if (!anvilDocument.anvilAst) {
+	const ast = anvilDocument.anvilAst;
+	if (!ast) {
 		console.log(`AST not yet available for document ${document.uri}`);
 		return null;
 	}
 
 	const position = params.position;
+
 	const node = anvilDocument.getClosestAnvilNodeToLspPosition(position);
+	const identifierUnderCursor = anvilDocument.getClosestIdentifierToLspPosition(position);
 
 	if (!node) {
 		console.log(`No definition result found`);
 		return null;
 	}
 
-	const defs = node.definitions;
-	if (!defs || defs.length === 0) {
+	let allDefs = node.definitions;
+	if (!allDefs || allDefs.length === 0) {
 		console.log(`No definitions found for node at position`);
 		return null;
 	}
+
+	const updatedDefs = allDefs.filter(def =>
+		!!(ast.goTo(def)?.names.includes(identifierUnderCursor ?? ''))
+	);
+
+	const defs = updatedDefs.length > 0 ? updatedDefs : allDefs;
+
 	console.log(`Found ${defs.length} definition(s) for node at position`);
 
 	return defs.map(def => {

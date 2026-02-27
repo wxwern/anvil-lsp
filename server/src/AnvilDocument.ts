@@ -132,6 +132,37 @@ export class AnvilDocument {
         return this.textInLspRange(lspRange);
     }
 
+    public getClosestIdentifierToLspPosition(position: Position): string | null {
+        const document = this.textDocument;
+        const l = position.line;
+        let c = position.character;
+
+        let characters = [];
+        while (c > 0 && (characters.length === 0 || characters[characters.length - 1]?.match(/[a-zA-Z0-9_]/))) {
+            c--;
+            characters.push(document.getText({
+                start: { line: l, character: c },
+                end: { line: l, character: c + 1 }
+            }));
+        }
+        characters.reverse();
+
+        c = position.character;
+        while (characters[characters.length - 1]?.match(/[a-zA-Z0-9_]/)) {
+            characters.push(document.getText({
+                start: { line: l, character: c },
+                end: { line: l, character: c + 1 }
+            }));
+            c++;
+        }
+
+        if (characters.length == 0) {
+            return null;
+        }
+
+        return characters.filter(x => x).filter(x => x?.match(/[a-zA-Z0-9_]/)).join('');
+    }
+
     public getClosestAnvilNodeToLspPosition(position: Position): AnvilAstNode | null {
         if (!this._anvilAst) return null;
 
