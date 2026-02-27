@@ -74,16 +74,6 @@ export class AnvilDescriptionGenerator {
                         message: `${mainMessage} (${info.message})`
                     });
                 }
-            } else {
-                diagnostic.relatedInformation = [
-                    {
-                        location: {
-                            uri: uri,
-                            range: Object.assign({}, diagnostic.range)
-                        },
-                        message: mainMessage
-                    }
-                ];
             }
 
             diagnostics.push(diagnostic);
