@@ -2,21 +2,21 @@ import path from "path";
 import { z } from "zod";
 
 
-const AnvilPosSchema = z.object({ line: z.number(), col: z.number() });
+export const AnvilPosSchema = z.object({ line: z.number(), col: z.number() });
 export type AnvilPos = z.infer<typeof AnvilPosSchema>;
 
-const AnvilSpanSchema = z.object({
+export const AnvilSpanSchema = z.object({
   start: AnvilPosSchema,
   end: AnvilPosSchema,
 });
 export type AnvilSpan = z.infer<typeof AnvilSpanSchema>;
 
-const AnvilDefSpanSchema = AnvilSpanSchema.extend({
+export const AnvilDefSpanSchema = AnvilSpanSchema.extend({
   file_name: z.string().nullable().optional(),
 });
 export type AnvilDefSpan = z.infer<typeof AnvilDefSpanSchema>;
 
-const AnvilSpannableSchema = z.object({
+export const AnvilSpannableSchema = z.object({
   kind: z.string().optional(),
   span: AnvilSpanSchema,
   def_span: z.array(AnvilDefSpanSchema).optional(),
@@ -33,26 +33,26 @@ export type AnvilSpannable = z.infer<typeof AnvilSpannableSchema>;
 
 
 
-const AnvilUnknownNodeSchema = z.record(z.string(), z.unknown());
+export const AnvilUnknownNodeSchema = z.record(z.string(), z.unknown());
 export type AnvilUnknownNode = z.infer<typeof AnvilUnknownNodeSchema>;
 
 
 
 
 
-const AnvilRegisterSchema = AnvilSpannableSchema.extend({
+export const AnvilRegisterSchema = AnvilSpannableSchema.extend({
   kind: z.literal("reg_def"),
   name: z.string(),
 }).and(AnvilUnknownNodeSchema);
 export type AnvilRegister = z.infer<typeof AnvilRegisterSchema>;
 
-const AnvilEndpointSchema = AnvilSpannableSchema.extend({
+export const AnvilEndpointSchema = AnvilSpannableSchema.extend({
   kind: z.literal("endpoint_def"),
   channel_class: z.string(),
 }).and(AnvilUnknownNodeSchema);
 export type AnvilEndpoint = z.infer<typeof AnvilEndpointSchema>;
 
-const AnvilChannelSchema = AnvilSpannableSchema.extend({
+export const AnvilChannelSchema = AnvilSpannableSchema.extend({
   kind: z.literal("channel_def"),
   channel_class: z.string(),
   endpoint_left: z.string(),
@@ -60,13 +60,13 @@ const AnvilChannelSchema = AnvilSpannableSchema.extend({
 }).and(AnvilUnknownNodeSchema);
 export type AnvilChannel = z.infer<typeof AnvilChannelSchema>;
 
-const AnvilExprSchema = AnvilSpannableSchema.extend({
+export const AnvilExprSchema = AnvilSpannableSchema.extend({
   kind: z.literal("expr"),
   type: z.string(),
 }).and(AnvilUnknownNodeSchema);
 export type AnvilExpr = z.infer<typeof AnvilExprSchema>;
 
-const AnvilThreadSchema = z.object({
+export const AnvilThreadSchema = z.object({
   expr: AnvilExprSchema,
   rst: AnvilUnknownNodeSchema.optional().nullable(),
 });
@@ -74,35 +74,35 @@ const AnvilThreadSchema = z.object({
 
 
 
-const AnvilChannelClassSchema = z.object({
+export const AnvilChannelClassSchema = z.object({
   kind: z.literal("channel_class_def"),
 })
   .and(AnvilSpannableSchema)
   .and(AnvilUnknownNodeSchema);
 export type AnvilChannelClass = z.infer<typeof AnvilChannelClassSchema>;
 
-const AnvilTypeSchema = z.object({
+export const AnvilTypeSchema = z.object({
   kind: z.literal("type_def"),
 })
   .and(AnvilSpannableSchema)
   .and(AnvilUnknownNodeSchema);
 export type AnvilType = z.infer<typeof AnvilTypeSchema>;
 
-const AnvilMacroSchema = z.object({
+export const AnvilMacroSchema = z.object({
   kind: z.literal("macro_def"),
 })
   .and(AnvilSpannableSchema)
   .and(AnvilUnknownNodeSchema);
 export type AnvilMacro = z.infer<typeof AnvilMacroSchema>;
 
-const AnvilFuncSchema = z.object({
+export const AnvilFuncSchema = z.object({
   kind: z.literal("func_def"),
 })
   .and(AnvilSpannableSchema)
   .and(AnvilUnknownNodeSchema);
 export type AnvilFunc = z.infer<typeof AnvilFuncSchema>;
 
-const AnvilProcSchema = z.object({
+export const AnvilProcSchema = z.object({
   kind: z.literal("proc_def"),
   name: z.string(),
   args: z.array(AnvilEndpointSchema),
@@ -125,7 +125,7 @@ export type AnvilProc = z.infer<typeof AnvilProcSchema>;
 
 
 
-const AnvilEventGraphSchema = z.object({
+export const AnvilEventGraphSchema = z.object({
   proc_name: z.string(),
   threads: z.array(
     z.object({
@@ -251,6 +251,23 @@ export class AnvilAstNode {
     }
     this._rootCache = node;
     return node;
+  }
+
+  get children(): AnvilAstNode[] {
+    const resolved = this.resolve();
+    if (typeof resolved !== "object" || resolved === null) {
+      return [];
+    }
+
+    if (Array.isArray(resolved)) {
+      return resolved.map((_, idx) => this.down(idx));
+    }
+
+    const childNodes: AnvilAstNode[] = [];
+    for (const key in resolved) {
+      childNodes.push(this.down(key));
+    }
+    return childNodes;
   }
 
   traverse(...relative: AnvilAstNodePath): AnvilAstNode {
@@ -499,8 +516,17 @@ export class AnvilAst {
     return this.roots.get(filename);
   }
 
-  goToClosest(filename: string, line: number, col: number): AnvilAstNode | null {
-    const closestLoc = this.findClosestLocation(filename, line, col);
+  goToClosest(filename: string, line: number, col: number,
+              predicate?: (n: AnvilAstNode) => boolean): AnvilAstNode | null {
+    const closestLoc = this.findClosestLocation(
+      filename, line, col,
+      predicate
+        ? (loc) => {
+          const n = this.goTo(loc);
+          return !!n && predicate!(n);
+        }
+        : undefined
+    );
     if (!closestLoc) {
       return null;
     }
@@ -571,10 +597,10 @@ export class AnvilAst {
     return node.location;
   }
 
-  findClosestLocation(filename: string, line: number, col: number): AnvilAbsoluteLocation | null {
+  findClosestLocation(filename: string, line: number, col: number,
+                      predicate?: (l: AnvilAbsoluteLocation) => boolean): AnvilAbsoluteLocation | null {
     console.log(`Search: closest AST node in ${filename} to line ${line}, col ${col}`);
 
-    // Binary search for closest location in the file
     const locations = this.orderedLocations.get(filename);
 
     if (!locations || locations.length === 0) {
@@ -597,6 +623,10 @@ export class AnvilAst {
       const size = (loc.span.end.line - loc.span.start.line) * 1000 + (loc.span.end.col - loc.span.start.col);
 
       if (!best || size < best.size) {
+        if (predicate && !predicate(loc)) {
+          continue;
+        }
+
         best = { loc, size };
       }
     }
