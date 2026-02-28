@@ -1,8 +1,13 @@
 import { ExtensionContext, services, workspace, LanguageClient, NodeModule, TransportKind, LanguageClientOptions } from 'coc.nvim'
+import * as path from 'path';
 
 export async function activate(context: ExtensionContext): Promise<void> {
+  const serverEntryPointRelToVimExt = '../server/out/server.js';
+  const clientEntryPointDirectory = __dirname;
+  const serverEntryPoint = path.join(clientEntryPointDirectory, serverEntryPointRelToVimExt);
+
   const serverOptions : NodeModule = {
-    module: "./server/out/server.js",
+    module: serverEntryPoint,
     transport: TransportKind.ipc,
     args: ["--node-ipc"],
   }
