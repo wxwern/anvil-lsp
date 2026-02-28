@@ -33,9 +33,15 @@ To install the language server, view the [installation instructions](#installati
         - [x] Register assign (`set`) syntax
         - [ ] Record init (`Rec::{field =`) syntax
         - [ ] Record read (`.field`) syntax
-        - [x] Lifetime annotation syntax
-        - [ ] Applicable input types only
-        - ... TBC
+        - [x] Type annotation syntax (`<identifier> : <type>`)
+        - [x] Lifetime annotation syntax (`chan { <left/right> ... : <lifetime> }`)
+        - [ ] Datatype-matched parameter values
+        - ... TBA
+    - [x] Snippets
+        - [x] Automatic delimiter insertion
+        - [x] Spawn process snippet (`spawn <proc>(<args>)`)
+        - [ ] Record init snippet (`Rec::{<field> = <value>, ... }`)
+        - ... TBA
 - [x] Inlay Hints
     - [x] Timing Information
 - [ ] Rename/Refactor symbol

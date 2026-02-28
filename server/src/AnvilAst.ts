@@ -317,6 +317,24 @@ export class AnvilAstNode {
     return node;
   }
 
+  getAllDescendants(): Iterable<AnvilAstNode> {
+    const stack: AnvilAstNode[] = [this];
+    return {
+      [Symbol.iterator]() {
+        return {
+          next(): IteratorResult<AnvilAstNode> {
+            if (stack.length === 0) {
+              return { done: true, value: undefined };
+            }
+            const current = stack.pop()!;
+            stack.push(...current.children);
+            return { done: false, value: current };
+          },
+        };
+      },
+    };
+  }
+
   /* -------------------------
    * Node Resolution
    * ------------------------- */
@@ -569,7 +587,7 @@ export class AnvilAst {
     return subfields.filter(filterCond ?? (() => true));
   }
 
-  getAll(filename?: string, filterCond?: AnvilAbsoluteLocationFilter): Readonly<AnvilAbsoluteLocation[]> {
+  getAllLocatableNodes(filename?: string, filterCond?: AnvilAbsoluteLocationFilter): Readonly<AnvilAbsoluteLocation[]> {
 
     if (!filename) {
       const filenames = Array.from(this.orderedLocations.keys());
@@ -578,7 +596,7 @@ export class AnvilAst {
       }
       let results = [];
       for (const fname of filenames) {
-        results.push(...this.getAll(fname, filterCond));
+        results.push(...this.getAllLocatableNodes(fname, filterCond));
       }
       return results;
     }
@@ -594,6 +612,10 @@ export class AnvilAst {
 
     return (locations ?? []).filter(filterCond ?? (() => true));
 
+  }
+
+  getAllRoots(): Readonly<AnvilAstNode[]> {
+    return Array.from(this.roots.values());
   }
 
   /* -------------------------

@@ -1,13 +1,13 @@
 import {CompletionItem, CompletionItemKind, InsertTextFormat, Position} from "vscode-languageserver";
-import {AnvilAstNode} from "./AnvilAst";
+import {AnvilAstNode, AnvilAstNodePath} from "./AnvilAst";
 import {AnvilDocument} from "./AnvilDocument";
 
 export class AnvilCompletionDetail {
   constructor(
-    public readonly label: string,
-    public readonly insertText: string = label,
-    public readonly lspKind: CompletionItemKind,
-    public readonly hint: string,
+    public label: string,
+    public insertText: string = label,
+    public lspKind: CompletionItemKind,
+    public hint: string,
     private documentation: { node?: AnvilAstNode, desc?: string } = {},
   ) { }
 
@@ -46,6 +46,7 @@ export class AnvilCompletionGenerator {
 
   public static readonly SPACER_REGEX_GROUP = "(^|[\\s\\(\\[{])";
   public static readonly IDENTIFIER_REGEX_GROUP = "([a-zA-Z_][a-zA-Z0-9_]*)";
+  public static readonly TYPEDEF_REGEX_GROUP = "([a-zA-Z0-9_<>\\(\\)\\[\\]]+)";
   public static readonly LIFETIME_IDENTIFIER_REGEX_GROUP = "(#[~0-9]+|[a-zA-Z_][a-zA-Z0-9_]*[+0-9]*)";
 
 
@@ -88,102 +89,25 @@ export class AnvilCompletionGenerator {
       return timingAnnotCompletions;
     }
 
+    const spawnCompletions = this.checkSpawnHeuristics(position, document);
+    if (spawnCompletions !== null) {
+      return spawnCompletions;
+    }
+
+    const typedefCompletions = this.checkTypedefHeuristics(position, document);
+    if (typedefCompletions !== null) {
+      return typedefCompletions;
+    }
 
     // All identifiers from the AST.
-    const ast = document.anvilAst;
     let completionItems: AnvilCompletionDetail[] = [];
-
-    completionItems.push(...(ast?.getAll().flatMap((loc) => {
-      const node = ast.goTo(loc);
-      if (!node) return null;
-
-      const nodeKind = node.kind;
-
-      let identifiers: string[] = [];
-      identifiers.push(...node.names);
-
-      let lspKind: CompletionItemKind = CompletionItemKind.Text;
-      let hint: string | undefined = undefined;
-
-      let list: AnvilCompletionDetail[] = [];
-
-      for (const name of identifiers) {
-        if (!name) return null;
-
-        ({lspKind, hint} = AnvilCompletionGenerator.getPropsForNodeKind(nodeKind));
-
-        list.push(new AnvilCompletionDetail(
-          name,
-          name,
-          lspKind,
-          hint || '',
-          { node }
-        ));
-      }
-
-      return list;
-    }).filter(c => c).map(c => c!) ?? []));
-
-
-
+    completionItems.push(...this.getAllEntries(this.getAllNodes(position, document)))
 
     // All Anvil keywords and operators.
-    const populateKeywords = (labels: string[], hint: string, type?: string, kind?: CompletionItemKind) => {
-      completionItems.push(...labels.map((label) => {
-        return new AnvilCompletionDetail(
-          label,
-          label,
-          kind || CompletionItemKind.Keyword,
-          '(' + hint + ')',
-          { desc: `Anvil built-in ${hint} ${type ?? 'keyword'} \`${label}\`` }
-        );
-      }));
-    };
-
-    populateKeywords([
-      'left', 'right', 'extern',
-      'shared', 'assigned by', 'import', 'generate', 'generate_seq',
-    ], 'modifier');
-
-    populateKeywords([
-      'logic', 'int', 'dyn',
-    ], 'type');
-
-    populateKeywords([
-      'struct', 'enum', 'proc', 'spawn', 'type', 'func', 'const', 'reg', 'chan',
-    ], 'declaration');
-
-    populateKeywords([
-      'call', 'loop', 'recursive', 'if', 'else', 'try', 'recurse', 'recv', 'send',
-      'dprint', 'dfinish', 'set', 'cycle', 'sync',  'match', 'put',  'ready', 'in',
-      'probe',
-    ], 'control');
-
-    populateKeywords(['with'], 'misc');
-    populateKeywords(['let'], 'binding');
-
-    populateKeywords(['@#', '@dyn', '~'], 'timing', 'token');
-
-    completionItems.push(...[
-      ['>>', 'wait', 'wait for evaluation of lhs before evaluating rhs'],
-      [':=', 'assign', 'assign rhs value to lhs'],
-      [';', 'join', 'evaluate lhs and rhs simulataneously'],
-    ].map(([label, hint, detail]) => {
-      let kind: CompletionItemKind = CompletionItemKind.Operator;
-      return new AnvilCompletionDetail(
-        label,
-        label,
-        kind,
-        '(' + hint + ')',
-        { desc: `Anvil built-in ${hint} operator \`${label}\`\n\n---\n\n${detail}` }
-      );
-    }));
+    completionItems.push(...this.getAnvilBuiltinCompletions());
 
     return completionItems;
   }
-
-
-
 
 
 
@@ -429,7 +353,7 @@ export class AnvilCompletionGenerator {
       // lifetime part
       completionItems.push(new AnvilCompletionDetail(
         '#N',
-        '#$0',
+        '#$1)',
         CompletionItemKind.TypeParameter,
         '(fixed lifetime)',
         { desc: 'Valid for N cycles' }
@@ -438,7 +362,7 @@ export class AnvilCompletionGenerator {
       completionItems.push(...messageDefs.flatMap(m => [
         new AnvilCompletionDetail(
           m.name!,
-          m.name!,
+          m.name! + '$1)',
           CompletionItemKind.TypeParameter,
           '(relative lifetime)',
           { node: m, desc: 'Valid for the same amount of time this endpoint is valid.' }
@@ -502,6 +426,186 @@ export class AnvilCompletionGenerator {
 
 
 
+  private static checkTypedefHeuristics(position: Position, document: AnvilDocument): AnvilCompletionDetail[] | null {
+    const prefix = this.getPrefixAtPosition(position, document);
+
+    // Heuristic matches when cursor is at:
+    // - "(reg/chan/left/right) typename : typedef"
+    const regex = new RegExp(`^\\s*(reg|left|right|let)\\s+${this.IDENTIFIER_REGEX_GROUP}\\s*(:)?\\s*${this.TYPEDEF_REGEX_GROUP}?$`, "g");
+    console.log('Checking typedef completion heuristic with regex:', regex);
+    const match = regex.exec(prefix);
+
+    if (!match) {
+      console.log('Typedef completion heuristic did not match.');
+      return null;
+    }
+
+    console.log('Typedef completion heuristic matched!');
+    const keyword = match[1];
+    const hasColon = !!match[3];
+    const typedefPartialPrefix = match[4] || '';
+    const typedefPartialNamePrefix = typedefPartialPrefix.split(/[<>\(\)\[\]]/g).slice(-1)[0] || '';
+    const ast = document.anvilAst;
+
+    if (!ast) return null;
+
+    if (!hasColon) {
+      console.log('Intentionally returning nothing (: not yet entered).');
+      return [];
+    }
+
+    const allDefs = this.getAllNodes(
+      position, document,
+      { filter: n => !!(n.kind === "type_def" && n.names.find(n => n.startsWith(typedefPartialNamePrefix))) }
+    ).filter(n => n.kind === 'type_def');
+
+    const allResults = this.getAllEntries(allDefs)
+    ;
+    allResults.push(...this.getAnvilBuiltinCompletions('type'));
+
+    if (keyword === 'left' || keyword === 'right') {
+      // channel endpoint, add a ( in front if not already present
+      if (!typedefPartialPrefix.trim().endsWith('(')) {
+        allResults.forEach(r => r.insertText = '(' + r.insertText);
+      }
+    }
+
+    if (prefix.endsWith(':')) {
+      // add a space in front
+      allResults.forEach(r => r.insertText = ' ' + r.insertText);
+    }
+
+    console.log(`Found ${allResults.length} typedef candidates for prefix "${typedefPartialNamePrefix}"`);
+    return allResults;
+
+  }
+
+
+  private static checkSpawnHeuristics(position: Position, document: AnvilDocument): AnvilCompletionDetail[] | null {
+    const prefix = this.getPrefixAtPosition(position, document);
+
+    // Heuristic matches when cursor is at: "spawn proc_name(" excluding the trailing "("
+    const regex = new RegExp(`${this.SPACER_REGEX_GROUP}spawn\\s+${this.TYPEDEF_REGEX_GROUP}?$`, "g");
+    console.log('Checking spawn completion heuristic with regex:', regex);
+
+    const match = regex.exec(prefix);
+    if (!match) {
+      console.log('Spawn completion heuristic did not match.');
+      return null;
+    }
+
+    console.log('Spawn completion heuristic matched!');
+    const procPartialNamePrefix = match[2] || '';
+    const ast = document.anvilAst;
+    if (!ast) return null;
+
+    // Locate all proc defs in the document and filter by prefix.
+    const procs = this.getAllNodes(
+      position, document,
+      { filter: n => !!(n.kind === "proc_def" && n.name?.startsWith(procPartialNamePrefix)) }
+    );
+
+    const results = procs.map(p => {
+      const name = p.name!;
+      const params = p.down("params")?.children.map(c => c.name).filter(n => !!n) || [];
+      const endpoints = p.down("args")?.children.map(c => c.name).filter(n => !!n) || [];
+
+      const paramFormat = params.length > 0
+        ? '<' + params.map((p, i) => `\${${i + 1}:${p}}`).join(', ') + '>'
+        : '';
+      const endpointFormat = endpoints.length > 0
+        ? '(' + endpoints.map((e, i) => `\${${i + 1 + params.length}:${e}}`).join(', ') + ')'
+        : '()';
+
+      return new AnvilCompletionDetail(
+        name,
+        name + paramFormat + endpointFormat,
+        CompletionItemKind.Module,
+        '(process)',
+        { node: p }
+      );
+    });
+
+    console.log(`Found ${results.length} proc candidates for prefix "${procPartialNamePrefix}"`);
+    return results;
+  }
+
+
+
+  private static getAllNodes(
+    position: Position, document: AnvilDocument,
+    options?: {
+      scoped?: boolean | string,
+      filter?: (node: AnvilAstNode) => boolean,
+      relnodepath?: AnvilAstNodePath
+    }
+  ): AnvilAstNode[] {
+
+    const ast = document.anvilAst;
+    const filter = options?.filter ?? (() => true);
+    const scoped = options?.scoped ?? false;
+    const scopeCond = typeof scoped === 'string'
+      ? (n: AnvilAstNode) => n.kind === scoped
+      : (n: AnvilAstNode) => true;
+    const relnodepath = options?.relnodepath;
+
+    if (!ast) return [];
+
+
+    let nodeList: AnvilAstNode[] =  relnodepath
+    ? (
+      scoped
+      ? Array.of(...(
+          ast.goToClosest(document.filepath, position.line, position.character, scopeCond) ?? ast.goToRoot(document.filepath)
+        )?.traverse(...relnodepath).children ?? [])
+      : ast.getAllRoots().flatMap(n => n.traverse(...relnodepath).children)
+    )
+    : (
+      scoped
+      ? Array.of(...(
+          ast.goToClosest(document.filepath, position.line, position.character, scopeCond) ?? ast.goToRoot(document.filepath)
+        )?.getAllDescendants() ?? [])
+
+      : ast.getAllLocatableNodes().map(l => ast.goTo(l)).filter(n => !!n)
+    );
+
+
+    return nodeList.filter(filter);
+  }
+
+  private static getAllEntries(nodes: AnvilAstNode[]) {
+    return nodes.flatMap((node) => {
+      if (!node) return null;
+
+      const nodeKind = node.kind;
+
+      let identifiers: string[] = [];
+      identifiers.push(...node.names);
+
+      let lspKind: CompletionItemKind = CompletionItemKind.Text;
+      let hint: string | undefined = undefined;
+
+      let list: AnvilCompletionDetail[] = [];
+
+      for (const name of identifiers) {
+        if (!name) return null;
+
+        ({lspKind, hint} = AnvilCompletionGenerator.getPropsForNodeKind(nodeKind));
+
+        list.push(new AnvilCompletionDetail(
+          name,
+          name,
+          lspKind,
+          hint || '',
+          { node }
+        ));
+      }
+
+      return list;
+    })
+    .filter(c => c)
+    .map(c => c!) ?? [];
+  }
 
 
   private static getPropsForNodeKind(nodeKind: AnvilAstNode['kind']): {lspKind: CompletionItemKind, hint?: string} {
@@ -566,5 +670,64 @@ export class AnvilCompletionGenerator {
       }
     }
   }
+
+  private static getAnvilBuiltinCompletions(category?: string | null, filter?: string[]): AnvilCompletionDetail[] {
+    let completionItems: AnvilCompletionDetail[] = [];
+    const populateKeywords = (labels: string[], hint: string, type?: string, kind?: CompletionItemKind) => {
+      completionItems.push(...labels.map((label) => {
+        return new AnvilCompletionDetail(
+          label,
+          label,
+          kind || CompletionItemKind.Keyword,
+          '(' + hint + ')',
+          { desc: `Anvil built-in ${hint} ${type ?? 'keyword'} \`${label}\`` }
+        );
+      }));
+    };
+
+    populateKeywords([
+      'left', 'right', 'extern',
+      'shared', 'assigned by', 'import', 'generate', 'generate_seq',
+    ], 'modifier');
+
+    populateKeywords([
+      'logic', 'int',
+    ], 'type');
+
+    populateKeywords([
+      'struct', 'enum', 'proc', 'spawn', 'type', 'func', 'const', 'reg', 'chan',
+    ], 'declaration');
+
+    populateKeywords([
+      'call', 'loop', 'recursive', 'if', 'else', 'try', 'recurse', 'recv', 'send',
+      'dprint', 'dfinish', 'set', 'cycle', 'sync',  'match', 'put',  'ready', 'in',
+      'probe',
+    ], 'control');
+
+    populateKeywords(['with'], 'misc');
+    populateKeywords(['let'], 'binding');
+
+    populateKeywords(['@#', '@dyn', '~'], 'timing');
+
+    completionItems.push(...[
+      ['>>', 'wait', 'wait for evaluation of lhs before evaluating rhs'],
+      [':=', 'assign', 'assign rhs value to lhs'],
+      [';', 'join', 'evaluate lhs and rhs simulataneously'],
+    ].map(([label, hint, detail]) => {
+      let kind: CompletionItemKind = CompletionItemKind.Operator;
+      return new AnvilCompletionDetail(
+        label,
+        label,
+        kind,
+        '(' + hint + ')',
+        { desc: `Anvil built-in ${hint} operator \`${label}\`\n\n---\n\n${detail}` }
+      );
+    }));
+
+    return completionItems
+      .filter(c => !filter || filter.includes(c.label))
+      .filter(c => !category || c.hint.includes(`(${category})`));
+  };
+
 
 }

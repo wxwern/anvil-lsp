@@ -495,7 +495,7 @@ connection.languages.inlayHint.on(async (params) => {
 
 	const lineCount = anvilDocument.textDocument.lineCount;
 
-	const locs = anvilDocument.anvilAst.getAll(anvilDocument.filepath);
+	const locs = anvilDocument.anvilAst.getAllLocatableNodes(anvilDocument.filepath);
 
 	let inlineInject: {[lineno: number]: string} = [];
 	let maxTextLen = 0;
