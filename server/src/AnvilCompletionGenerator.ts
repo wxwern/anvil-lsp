@@ -94,6 +94,11 @@ export class AnvilCompletionGenerator {
       return spawnCompletions;
     }
 
+    const constructSyntaxCompletions = this.checkConstructSyntaxHeuristics(position, document);
+    if (constructSyntaxCompletions !== null) {
+      return constructSyntaxCompletions;
+    }
+
     const typedefCompletions = this.checkTypedefHeuristics(position, document);
     if (typedefCompletions !== null) {
       return typedefCompletions;
@@ -528,6 +533,96 @@ export class AnvilCompletionGenerator {
 
     console.log(`Found ${results.length} proc candidates for prefix "${procPartialNamePrefix}"`);
     return results;
+  }
+
+
+
+
+  private static checkConstructSyntaxHeuristics(position: Position, document: AnvilDocument): AnvilCompletionDetail[] | null {
+    const prefix = this.getPrefixAtPosition(position, document);
+
+    // Heuristic matches when cursor is at: "typename::"
+    const regex = new RegExp(`${this.SPACER_REGEX_GROUP}${this.TYPEDEF_REGEX_GROUP}(:(:({|${this.IDENTIFIER_REGEX_GROUP})?)?)?$`, "g");
+    console.log('Checking construct syntax completion heuristic with regex:', regex);
+    const match = regex.exec(prefix);
+    if (!match) {
+      console.log('Construct syntax completion heuristic did not match.');
+      return null;
+    }
+
+    console.log('Construct syntax completion heuristic matched!');
+    const typeName = match[2];
+    const memberPartialPrefix = match[3] || '';
+    const ast = document.anvilAst;
+    if (!ast) return null;
+
+    // Locate the type def for the given type name.
+    const typeDefs = this.getAllNodes(
+      position, document,
+      { filter: n => !!(n.kind === "type_def" && n.name === typeName) }
+    ).filter(n => n.kind === 'type_def');
+
+    if (typeDefs.length === 0) {
+      console.log(`No type definitions found for type name "${typeName}"`);
+      return memberPartialPrefix.startsWith(':') ? [] : null;
+    }
+
+    for (const typeDef of typeDefs) {
+      switch (typeDef.traverse("data_type", "type").resolve()) {
+        case 'record': {
+          // struct-like type, look for fields
+          const fields = typeDef.traverse("data_type", "fields").children;
+          const fieldNames = fields.flatMap(f => f.name).map(n => n || '').filter(n => n);
+
+          // completion syntax is typename::{name1 = $1, name2 = $2, ...}
+          const previewTemplate = '::{' + fieldNames.map(n => `${n} = ...`).join(', ') + '}';
+          let fieldTemplate = '::{' + fieldNames.map((n, i) => `${n} = \${${i + 1}}`).join(', ') + '}'
+
+          console.log(`Found ${fieldNames.length} field candidates for prefix "${memberPartialPrefix}"`);
+
+          if (!fieldTemplate.startsWith(memberPartialPrefix)) {
+            continue;
+          }
+
+          fieldTemplate = fieldTemplate.slice(memberPartialPrefix.length);
+
+          return [new AnvilCompletionDetail(
+            previewTemplate,
+            fieldTemplate,
+            CompletionItemKind.Struct,
+            `(record fields)`,
+            { node: typeDef }
+          )];
+        }
+        case 'variant': {
+          // enum-like type, look for variants
+          const variants = typeDef.traverse("data_type", "elements").children;
+          const matchingVariants = variants
+            .filter(v => v.name)
+            .filter(v => ('::' + v.name).startsWith(memberPartialPrefix));
+
+          console.log(`Found ${matchingVariants.length} variant candidates for prefix "${memberPartialPrefix}"`);
+
+          return matchingVariants.map(v => new AnvilCompletionDetail(
+            v.name!,
+            memberPartialPrefix.startsWith('::')
+              ? v.name! :
+            memberPartialPrefix.startsWith(':')
+              ? ':' + v.name!
+              : '::' + v.name!,
+            CompletionItemKind.EnumMember,
+            `(variant field)`,
+            { node: typeDef /* todo: use the specific variant */ }
+          ));
+        }
+        default: {
+          console.log(`Type definition "${typeName}" is not a record or variant, no construct syntax completions available.`);
+          break;
+        }
+      }
+    }
+
+    return memberPartialPrefix.startsWith(':') ? [] : null;
   }
 
 
