@@ -1,6 +1,7 @@
 import {CompletionItem, CompletionItemKind, InsertTextFormat, Position} from "vscode-languageserver";
 import {AnvilAstNode, AnvilAstNodePath} from "./AnvilAst";
 import {AnvilDocument} from "./AnvilDocument";
+import {type} from "os";
 
 export class AnvilCompletionDetail {
   constructor(
@@ -42,11 +43,11 @@ export class AnvilCompletionDetail {
 
 export class AnvilCompletionGenerator {
 
-  public static readonly TRIGGER_CHARS = ['.', ',', '*', '{', '(', '[', ':', ';', '=', '@', ' '];
+  public static readonly TRIGGER_CHARS = ['.', ',', '*', '<', '{', '(', '[', ':', ';', '=', '@', ' '];
 
   public static readonly SPACER_REGEX_GROUP = "(^|[\\s\\(\\[{])";
   public static readonly IDENTIFIER_REGEX_GROUP = "([a-zA-Z_][a-zA-Z0-9_]*)";
-  public static readonly TYPEDEF_REGEX_GROUP = "([a-zA-Z0-9_<>\\(\\)\\[\\]]+)";
+  public static readonly TYPEDEF_REGEX_GROUP = "([a-zA-Z_][a-zA-Z0-9_<>\\(\\)\\[\\]]*)";
   public static readonly LIFETIME_IDENTIFIER_REGEX_GROUP = "(#[~0-9]+|[a-zA-Z_][a-zA-Z0-9_]*[+0-9]*)";
 
 
@@ -62,7 +63,6 @@ export class AnvilCompletionGenerator {
 
     return prefix;
   }
-
 
 
 
@@ -102,6 +102,11 @@ export class AnvilCompletionGenerator {
     const typedefCompletions = this.checkTypedefHeuristics(position, document);
     if (typedefCompletions !== null) {
       return typedefCompletions;
+    }
+
+    const typedefParamCompletions = this.checkTypedefParamHeuristics(position, document);
+    if (typedefParamCompletions !== null) {
+      return typedefParamCompletions;
     }
 
     // All identifiers from the AST.
@@ -436,7 +441,7 @@ export class AnvilCompletionGenerator {
 
     // Heuristic matches when cursor is at:
     // - "(reg/chan/left/right) typename : typedef"
-    const regex = new RegExp(`^\\s*(reg|left|right|let)\\s+${this.IDENTIFIER_REGEX_GROUP}\\s*(:)?\\s*${this.TYPEDEF_REGEX_GROUP}?$`, "g");
+    const regex = new RegExp(`^\\s*(reg|left|right|let)\\s+${this.IDENTIFIER_REGEX_GROUP}\\s*(:)?\\s*(\\()?${this.TYPEDEF_REGEX_GROUP}?$`, "g");
     console.log('Checking typedef completion heuristic with regex:', regex);
     const match = regex.exec(prefix);
 
@@ -448,7 +453,8 @@ export class AnvilCompletionGenerator {
     console.log('Typedef completion heuristic matched!');
     const keyword = match[1];
     const hasColon = !!match[3];
-    const typedefPartialPrefix = match[4] || '';
+    const hasOpenParen = !!match[4];
+    const typedefPartialPrefix = match[5] || '';
     const typedefPartialNamePrefix = typedefPartialPrefix.split(/[<>\(\)\[\]]/g).slice(-1)[0] || '';
     const ast = document.anvilAst;
 
@@ -470,7 +476,7 @@ export class AnvilCompletionGenerator {
 
     if (keyword === 'left' || keyword === 'right') {
       // channel endpoint, add a ( in front if not already present
-      if (!typedefPartialPrefix.trim().endsWith('(')) {
+      if (!hasOpenParen && !typedefPartialPrefix) {
         allResults.forEach(r => r.insertText = '(' + r.insertText);
       }
     }
@@ -484,6 +490,62 @@ export class AnvilCompletionGenerator {
     return allResults;
 
   }
+
+
+
+  private static checkTypedefParamHeuristics(position: Position, document: AnvilDocument): AnvilCompletionDetail[] | null {
+    const prefix = this.getPrefixAtPosition(position, document);
+
+    // Heuristic matches when cursor is at: "typename<" for snippet completion
+    const regex = new RegExp(`${this.SPACER_REGEX_GROUP}${this.IDENTIFIER_REGEX_GROUP}<$`, "g");
+    console.log('Checking typedef parameter completion heuristic with regex:', regex);
+    const match = regex.exec(prefix);
+
+    if (!match) {
+      console.log('Typedef parameter completion heuristic did not match.');
+      return null;
+    }
+
+    console.log('Typedef parameter completion heuristic matched!');
+    const typeName = match[2];
+    const paramPartialPrefix = match[3] || '';
+    const ast = document.anvilAst;
+    if (!ast) return null;
+
+    // Locate the type def for the given type name.
+    const typeDefs = this.getAllNodes(
+      position, document,
+      { filter: n => !!(n.kind === "type_def" && n.name === typeName) }
+    ).filter(n => n.kind === 'type_def');
+
+    if (typeDefs.length === 0) {
+      console.log(`No type definitions found for type name "${typeName}"`);
+      return [];
+    }
+
+    const typeDef = typeDefs[0];
+
+    // Get the parameter list for the type def, and filter by prefix.
+    const params = typeDef.traverse("data_type", "params").children;
+    const matchingParams = params.map(p => p.name).filter(n => !!n);
+
+    console.log(`Found ${matchingParams.length} typedef parameter candidates for prefix "${paramPartialPrefix}"`);
+
+    if (matchingParams.length === 0) {
+      return [];
+    }
+
+    const snippet = '<' + matchingParams.map((p, i) => `\${${i + 1}:${p}}`).join(', ') + '>';
+
+    return [new AnvilCompletionDetail(
+      "<...>",
+      snippet.slice(1) /* remove the leading < since it's already in the regex matching rule */,
+      CompletionItemKind.TypeParameter,
+      `(type parameters)`,
+      { node: typeDef }
+    )];
+  }
+
 
 
   private static checkSpawnHeuristics(position: Position, document: AnvilDocument): AnvilCompletionDetail[] | null {
