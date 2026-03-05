@@ -516,14 +516,14 @@ connection.languages.inlayHint.on(async (params) => {
 		maxTextLen = Math.max(maxTextLen, event.length);
 	}
 
-	maxTextLen = Math.pow(2, Math.ceil(Math.log2(maxTextLen)));
+	maxTextLen = Math.pow(2, Math.ceil(Math.log2(maxTextLen + 2)));
 
-	console.log(`Found ${Object.keys(inlineInject)} inlay hints for document ${uri}`);
+	console.log(`Found inlay hints at ${Object.keys(inlineInject)} for document ${uri}`);
 
 	const inlineRanges: [number, string][] = [];
 	for (let line = 0; line < lineCount; line++) {
 		if (inlineInject[line]) {
-			const text = inlineInject[line];
+			const text = inlineInject[line] + ' -';
 			if (text.length < maxTextLen) {
 				// pad with spaces to ensure inlay hints are aligned
 				inlineRanges.push([line, ' '.repeat(maxTextLen - text.length) + text]);
@@ -532,6 +532,24 @@ connection.languages.inlayHint.on(async (params) => {
 			}
 		} else {
 			inlineRanges.push([line, ' '.repeat(maxTextLen)]);
+		}
+	}
+
+	// replace all consecutive matching lines with "   | " to indicate continuation of the same event
+	let targetedLines : {[key: number]: boolean} = {}
+	const contMarker = ' '.repeat(maxTextLen - 2) + '| ';
+	const endMarker = ' '.repeat(maxTextLen - 2) + ' -';
+	for (let i = 1; i < inlineRanges.length; i++) {
+		if (inlineRanges[i][1] === inlineRanges[i - 1][1] && inlineRanges[i][1].trim() !== '') {
+			targetedLines[i] = true;
+		}
+	}
+	for (let l in targetedLines) {
+		const line = +l;
+		if (!targetedLines[line + 1]) {
+			inlineRanges[line][1] = endMarker;
+		} else {
+			inlineRanges[line][1] = contMarker;
 		}
 	}
 
