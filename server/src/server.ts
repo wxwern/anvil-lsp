@@ -438,7 +438,7 @@ connection.onCompletion(async (params) => {
 connection.onCompletionResolve(async (item: CompletionItem) => {
 	const filepath = item.data?.filepath;
 	const nodepath = item.data?.nodepath;
-	const plainDesc = item.data?.desc;
+	const plainDesc = item.data?.desc || '';
 
 	if (plainDesc && typeof plainDesc === 'string') {
 		item.documentation = {
@@ -455,10 +455,15 @@ connection.onCompletionResolve(async (item: CompletionItem) => {
 		if (doc) {
 			const node = doc.anvilAst?.goToRoot(filepath)?.traverse(...nodepathResolved);
 			if (node) {
-				const defDesc = AnvilDescriptionGenerator.describeNode(node, doc, getAnvilDocumentForNode);
+				const defDesc = AnvilDescriptionGenerator.describeNode(node, doc, getAnvilDocumentForNode) || '';
+
+				let descs = [];
+				if (plainDesc) descs.push(plainDesc);
+				if (defDesc) descs.push(defDesc);
+
 				item.documentation = {
 					kind: 'markdown',
-					value: plainDesc + '\n\n---\n\n' + defDesc
+					value: descs.join('\n\n---\n\n')
 				};
 				return item;
 			}
