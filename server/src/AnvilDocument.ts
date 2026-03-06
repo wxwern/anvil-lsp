@@ -3,6 +3,7 @@ import { AnvilAst, AnvilAstNode, AnvilSpan, AnvilPos } from "./AnvilAst";
 import { Range, Position, TextDocumentContentChangeEvent } from "vscode-languageserver";
 import { AnvilCompilationResult, AnvilCompiler } from "./AnvilCompiler";
 import { AnvilLspUtils, AnvilServerSettings } from "./AnvilLspUtils";
+import fs from "fs";
 
 export class AnvilDocument {
     private _textDocument: TextDocument | null = null;
@@ -13,15 +14,73 @@ export class AnvilDocument {
 
     private readonly EXPERIMENTAL_TRACK_POST_AST_TEXT_EDITS = true;
 
-    private constructor(doc: TextDocument) {
+    private constructor(doc: TextDocument, external: boolean = false) {
         this._textDocument = doc;
+        this.textDocumentIsImported = external;
     }
 
+    // Initialization
+
+    /**
+     * Creates an AnvilDocument from a given TextDocument.
+     *
+     * The AnvilDocument will treat the provided TextDocument as externally synced,
+     * meaning that it expects the caller to keep the TextDocument up-to-date with
+     * the actual text content.
+     *
+     * The caller is also responsible for calling {@link syncTextEdits} to inform
+     * the AnvilDocument of any changes to the text content, allowing it to track edits
+     * for AST code-span synchronization.
+     *
+     * @param doc The TextDocument instance to create the AnvilDocument from.
+     * @returns A new AnvilDocument instance with the provided TextDocument.
+     */
     static fromTextDocument(doc: TextDocument): AnvilDocument {
-        return new AnvilDocument(doc);
+        return new AnvilDocument(doc, true);
+    }
+
+    /**
+     * Creates an AnvilDocument from a file path.
+     *
+     * The AnvilDocument will read the file content and create an internal TextDocument instance.
+     * This instance will not track any external changes to the file.
+     *
+     * @param filePath The path or URI to the file to create the AnvilDocument from.
+     * @returns A new AnvilDocument instance with the content of the specified file,
+     *          or null if the file cannot be accessed.
+     */
+    static fromFilesystem(filePath: string): AnvilDocument | null {
+        if (filePath.startsWith('file://')) {
+            filePath = filePath.replace('file://', '');
+        }
+        try {
+            fs.accessSync(filePath);
+            const data = fs.readFileSync(filePath, 'utf-8');
+            return new AnvilDocument(
+                TextDocument.create(`file://${filePath}`, 'anvil', 0, data),
+                false
+            );
+        } catch (err) {
+            return null;
+        }
     }
 
     // Getters
+
+    /** Indicates whether the text document is externally imported.
+     *
+     * If true, the {@link TextDocument} instance is provided externally and
+     * is expected to be kept up-to-date by the caller with the actual text content.
+     * The caller is also responsible for calling {@link syncTextEdits} to inform
+     * the AnvilDocument of any changes to the text content, allowing it to track edits
+     * for AST code-span synchronization.
+     *
+     * If false, the AnvilDocument manages its own {@link TextDocument} instance. It
+     * does not synchronise with external changes and does not track any edits
+     * or filesystem changes.
+     */
+    public readonly textDocumentIsImported: boolean;
+
     public get textDocument(): TextDocument {
         if (!this._textDocument) {
             throw new Error("Text document not loaded");

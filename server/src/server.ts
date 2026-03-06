@@ -144,8 +144,12 @@ const getAnvilDocumentForNode = (node: AnvilAstNode) => {
 	const fullpath = node.location?.fullpath;
 	if (!fullpath) return null;
 
-	const doc = documentAnvilManagers.get('file://' + fullpath);
-	return doc ?? null;
+	const doc =
+		documentAnvilManagers.get('file://' + fullpath) ??
+	    AnvilDocument.fromFilesystem(fullpath) ??
+		null;
+
+	return doc;
 }
 
 
