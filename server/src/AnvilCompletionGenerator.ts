@@ -43,12 +43,12 @@ export class AnvilCompletionDetail {
 
 export class AnvilCompletionGenerator {
 
-  public static readonly TRIGGER_CHARS = ['.', ',', '*', '<', '{', '(', '[', ':', ';', '=', '@', ' '];
+  public static readonly TRIGGER_CHARS = ['.', '*', '<', '{', '(', '[', ':', '=', '@', '#', ' '];
 
   public static readonly SPACER_REGEX_GROUP = "(^|[\\s\\(\\[{])";
   public static readonly IDENTIFIER_REGEX_GROUP = "([a-zA-Z_][a-zA-Z0-9_]*)";
   public static readonly TYPEDEF_REGEX_GROUP = "([a-zA-Z_][a-zA-Z0-9_<>\\(\\)\\[\\]]*)";
-  public static readonly LIFETIME_IDENTIFIER_REGEX_GROUP = "(#[~0-9]+|[a-zA-Z_][a-zA-Z0-9_]*[+0-9]*)";
+  public static readonly LIFETIME_IDENTIFIER_REGEX_GROUP = "(#[~0-9]+|[#a-zA-Z_][a-zA-Z0-9_]*[+0-9]*)";
 
 
   private static getPrefixAtPosition(position: Position, document: AnvilDocument, options?: { fast?: boolean }): string {
@@ -258,7 +258,7 @@ export class AnvilCompletionGenerator {
       // If we haven't completed the endpoint, return endpoints.
       return endpointCandidates.flatMap(e => e.names.map(n => new AnvilCompletionDetail(
         n,
-        n + '.',
+        n,
         CompletionItemKind.Interface,
         '(endpoint)',
         { node: e }
@@ -300,7 +300,7 @@ export class AnvilCompletionGenerator {
 
     return messageCompletions.map(m => new AnvilCompletionDetail(
       m.name!,
-      m.name! + "($1)$0",
+      m.name! + (isSend ? "($1)$0" : ""),
       CompletionItemKind.Method,
       `${isSend ? 'send' : 'recv'} (message)`,
       { node: m }
@@ -363,7 +363,7 @@ export class AnvilCompletionGenerator {
       // lifetime part
       completionItems.push(new AnvilCompletionDetail(
         '#N',
-        '#$1)',
+        '#$1)$0',
         CompletionItemKind.TypeParameter,
         '(fixed lifetime)',
         { desc: 'Valid for N cycles' }
@@ -372,7 +372,7 @@ export class AnvilCompletionGenerator {
       completionItems.push(...messageDefs.flatMap(m => [
         new AnvilCompletionDetail(
           m.name!,
-          m.name! + '$1)',
+          m.name! + '$1)$0',
           CompletionItemKind.TypeParameter,
           '(relative lifetime)',
           { node: m, desc: 'Valid for the same amount of time this endpoint is valid.' }
@@ -388,18 +388,23 @@ export class AnvilCompletionGenerator {
         return [];
       }
 
+      const needsHash = !(
+        (rangeStartAnnotPrefix.startsWith('#') && !hasRangeEndAnnot) || (rangeEndAnnotPrefix.startsWith('#'))
+      );
+      const H = needsHash ? '#' : '';
+
       // synchronisation part
       completionItems.push(new AnvilCompletionDetail(
-        '#N',
-        '#$0',
+        H + 'N',
+        H + '$0',
         CompletionItemKind.TypeParameter,
         '(fixed sync)',
         { desc: 'Valid beginning after every N cycles from start\n(`kN for k >= 1`)' }
       ));
 
       completionItems.push(new AnvilCompletionDetail(
-        '#M~N',
-        '#$1~$0',
+        H + 'M~N',
+        H + '$1~$0',
         CompletionItemKind.TypeParameter,
         '(fixed sync)',
         { desc: 'Valid beginning Mth cycle, and beginning every N cycles after (`M+kN for k >= 0`)' }
@@ -416,14 +421,14 @@ export class AnvilCompletionGenerator {
       completionItems.push(...messageDefs.flatMap(m => [
         new AnvilCompletionDetail(
           m.name!,
-          m.name!,
+          H + m.name!,
           CompletionItemKind.TypeParameter,
           '(relative sync)',
           { node: m, desc: 'Valid starting when this endpoint is valid.' }
         ),
         new AnvilCompletionDetail(
           m.name! + "+N",
-          m.name! + "+$0",
+          H + m.name! + "+$0",
           CompletionItemKind.TypeParameter,
           '(relative sync)',
           { node: m, desc: 'Valid starting N cycles after this endpoint becomes valid.' }
@@ -637,8 +642,8 @@ export class AnvilCompletionGenerator {
           const fieldNames = fields.flatMap(f => f.name).map(n => n || '').filter(n => n);
 
           // completion syntax is typename::{name1 = $1, name2 = $2, ...}
-          const previewTemplate = '::{' + fieldNames.map(n => `${n} = ...`).join(', ') + '}';
-          let fieldTemplate = '::{' + fieldNames.map((n, i) => `${n} = \${${i + 1}}`).join(', ') + '}'
+          const previewTemplate = '::{' + fieldNames.map(n => `${n} = ...`).join('; ') + '}';
+          let fieldTemplate = '::{' + fieldNames.map((n, i) => `${n} = \${${i + 1}}`).join('; ') + '}'
 
           console.log(`Found ${fieldNames.length} field candidates for prefix "${memberPartialPrefix}"`);
 

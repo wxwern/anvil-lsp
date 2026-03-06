@@ -41,7 +41,7 @@ To install the language server, view the [installation instructions](#installati
     - [x] Snippets
         - [x] Automatic delimiter insertion
         - [x] Spawn process snippet (`spawn <proc>(<args>)`)
-        - [x] Record init snippet (`Rec::{<field> = <value>, ... }`)
+        - [x] Record init snippet (`Rec::{<field> = <value>; ... }`)
         - ... TBA
 - [x] Inlay Hints
     - [x] Timing Information
