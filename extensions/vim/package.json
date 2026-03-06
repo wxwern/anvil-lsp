@@ -13,7 +13,9 @@
   },
   "scripts": {
     "watch": "concurrently 'node esbuild.mjs --watch' 'cd server && npm run watch -- --preserveWatchOutput'",
-    "build": "node esbuild.mjs && cd server && npm run build",
+    "build:client": "node esbuild.mjs",
+    "build:server": "cd server && npm run build",
+    "build": "npm run build:client && npm run build:server",
     "prepare": "node esbuild.mjs",
     "postinstall": "cd ./server && npm install"
   },

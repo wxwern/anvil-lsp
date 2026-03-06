@@ -45,6 +45,9 @@ To install the language server, view the [installation instructions](#installati
         - ... TBA
 - [x] Inlay Hints
     - [x] Timing Information
+        - [x] Events
+        - [ ] Clock Cycle Hints
+        - [ ] Lifetime Hints
 - [ ] Rename/Refactor symbol
 
 (Checkboxes indicate implemented features)
@@ -60,7 +63,7 @@ Extensions are experimental. They automatically integrate syntax highlighting an
 Available extensions for supported editors are included in the `extensions` folder.
 
 - [VSCode](#vscode)
-- [Vim](#vim)
+- [Vim/Neovim (`coc.nvim`)](#vimneovim-cocnvim)
 
 
 ### VSCode
@@ -82,7 +85,7 @@ Available extensions for supported editors are included in the `extensions` fold
 5. Select **"Open"** to install the extension.
 
 
-### Vim
+### Vim/Neovim (coc.nvim)
 
 This requires `coc.nvim` for out-of-the-box LSP support.
 
@@ -101,8 +104,10 @@ For example, with `vim-plug`:
     :PlugInstall
     ```
 
-Or if you prefer to manage it locally:
+<details>
+    <summary>Manual installation</summary>
 
+If you prefer to manage it manually (still requires `coc.nvim`):
 
 1. Clone this repository, and build the extension:
     ```bash
@@ -116,3 +121,23 @@ Or if you prefer to manage it locally:
     ```vim
     set rtp^=/path/to/anvil-lsp/extensions/vim
     ```
+
+</details>
+
+
+
+
+### Building
+
+Run the build script in the root of the repository to build all components
+(language server, anvil compiler, all editor extensions):
+```bash
+./build.sh
+```
+
+Or specify a component as an argument to build only said component, e.g.,
+```bash
+./build.sh anvil vscode
+```
+
+
