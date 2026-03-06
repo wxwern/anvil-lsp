@@ -250,6 +250,8 @@ connection.languages.diagnostics.on(async (params) => {
 			? await AnvilDescriptionGenerator.describeDiagnostics(anvilDocument, settings.maxNumberOfProblems)
 			: [];
 
+	connection.languages.inlayHint.refresh();
+
 	return {
 		kind: DocumentDiagnosticReportKind.Full,
 		items: diagnostics
