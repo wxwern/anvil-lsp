@@ -55,7 +55,9 @@ export class AnvilDescriptionGenerator {
 
             const diagnostic: Diagnostic = {
                 severity: errorTypeDiagnosticSeverity[error.type] || DiagnosticSeverity.Error,
-                range: AnvilLspUtils.anvilSpanToLspRange(error.span),
+                range:
+                    anvilDocument.getLspRangeOfAnvilSpan(error.span) ??
+                    AnvilLspUtils.anvilSpanToLspRange(error.span),
                 message: error.message,
                 source: 'anvil'
             };
@@ -69,7 +71,9 @@ export class AnvilDescriptionGenerator {
                     diagnostic.relatedInformation.push({
                         location: {
                             uri: uri,
-                            range: AnvilLspUtils.anvilSpanToLspRange(info.span)
+                            range:
+                                anvilDocument.getLspRangeOfAnvilSpan(info.span) ??
+                                AnvilLspUtils.anvilSpanToLspRange(info.span)
                         },
                         message: `${mainMessage} (${info.message})`
                     });
@@ -116,7 +120,13 @@ export class AnvilDescriptionGenerator {
             }
         }
 
-        return { text: bestDoc.textDocument.getText(AnvilLspUtils.anvilSpanToLspRange(node.span!)), source: bestDoc };
+        return {
+            text: bestDoc.textDocument.getText(
+                bestDoc.getLspRangeOfAnvilSpan(node.span!) ??
+                AnvilLspUtils.anvilSpanToLspRange(node.span!)
+            ),
+            source: bestDoc
+        };
     }
 
     private static getNodeDefinitionStr(

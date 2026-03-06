@@ -29,6 +29,7 @@ import { AnvilDescriptionGenerator } from './AnvilDescriptionGenerator';
 import {AnvilCompletionDetail, AnvilCompletionGenerator} from './AnvilCompletionGenerator';
 import {text} from 'stream/consumers';
 import {AnvilAbsoluteLocation, AnvilAstNode, AnvilAstNodePath, AnvilSpan} from './AnvilAst';
+import {TextDocumentConnection} from 'vscode-languageserver/lib/common/textDocuments';
 
 
 //
@@ -156,6 +157,15 @@ const getAnvilDocumentForNode = (node: AnvilAstNode) => {
 // LSP Basic File Events
 //
 
+const documentSubscribers = {
+	onDidOpenTextDocument: connection.onDidOpenTextDocument,
+	onDidChangeTextDocument: connection.onDidChangeTextDocument,
+	onDidCloseTextDocument: connection.onDidCloseTextDocument,
+    onWillSaveTextDocument: connection.onWillSaveTextDocument,
+	onWillSaveTextDocumentWaitUntil: connection.onWillSaveTextDocumentWaitUntil,
+	onDidSaveTextDocument: connection.onDidSaveTextDocument
+} satisfies TextDocumentConnection;
+
 // Monitor changes to files and configuration
 connection.onDidChangeWatchedFiles(_change => {
 	// Monitored files have change in VSCode
@@ -190,15 +200,23 @@ connection.onDidChangeWatchedFiles(_change => {
 	connection.languages.diagnostics.refresh();
 });
 
-connection.onDidOpenTextDocument(e => {
-	const document = e.textDocument;
-	documentAnvilManagers.get(document.uri); // preload AnvilDocument for the opened document
-});
+documentSubscribers.onDidOpenTextDocument = _e =>
+	connection.onDidOpenTextDocument(e => {
+		const document = e.textDocument;
+		connection.console.log(`Document opened: ${document.uri}`);
+		documentAnvilManagers.get(document.uri); // preload AnvilDocument for the opened document
 
-connection.onDidChangeTextDocument(e => {
-	const anvilDocument = documentAnvilManagers.get(e.textDocument.uri);
-	anvilDocument?.syncTextEdits(e.contentChanges);
-});
+		_e(e);
+	});
+
+documentSubscribers.onDidChangeTextDocument = _e =>
+	connection.onDidChangeTextDocument(e => {
+		const anvilDocument = documentAnvilManagers.get(e.textDocument.uri);
+		connection.console.log(`Document ${e.textDocument.uri} changed with ${e.contentChanges.length} content changes.`);
+		anvilDocument?.syncTextEdits(e.contentChanges);
+
+		_e(e);
+	});
 
 connection.onDidChangeConfiguration(change => {
 	if (hasConfigurationCapability) {
@@ -365,7 +383,9 @@ connection.onDefinition(async (params) => {
 	return defs.map(def => {
 		return {
 			uri: "file://" + def.fullpath,
-			range: AnvilLspUtils.anvilSpanToLspRange(def.span)
+			range:
+				documentAnvilManagers.get("file://" + def.fullpath)?.getLspRangeOfAnvilSpan(def.span) ??
+				AnvilLspUtils.anvilSpanToLspRange(def.span)
 		}
 	});
 });
@@ -414,7 +434,9 @@ connection.onReferences(async (params) => {
 	return refs.map(ref => {
 		return {
 			uri: "file://" + ref.fullpath,
-			range: AnvilLspUtils.anvilSpanToLspRange(ref.span)
+			range:
+				documentAnvilManagers.get("file://" + ref.fullpath)?.getLspRangeOfAnvilSpan(ref.span) ??
+				AnvilLspUtils.anvilSpanToLspRange(ref.span)
 		}
 	});
 });
@@ -570,7 +592,7 @@ connection.languages.inlayHint.on(async (params) => {
 
 // Make the text document manager listen on the connection
 // for open, change and close text document events
-documents.listen(connection);
+documents.listen(documentSubscribers);
 
 // Listen on the connection
 connection.listen();

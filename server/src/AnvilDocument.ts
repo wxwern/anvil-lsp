@@ -1,5 +1,5 @@
 import { TextDocument } from "vscode-languageserver-textdocument";
-import { AnvilAst, AnvilAstNode, AnvilSpan, AnvilPos, AnvilAbsoluteLocation } from "./AnvilAst";
+import { AnvilAst, AnvilAstNode, AnvilSpan, AnvilPos } from "./AnvilAst";
 import { Range, Position, TextDocumentContentChangeEvent } from "vscode-languageserver";
 import { AnvilCompilationResult, AnvilCompiler } from "./AnvilCompiler";
 import { AnvilLspUtils, AnvilServerSettings } from "./AnvilLspUtils";
@@ -166,7 +166,7 @@ export class AnvilDocument {
     public getClosestAnvilNodeToLspPosition(position: Position): AnvilAstNode | null {
         if (!this._anvilAst) return null;
 
-        const res = this.reverseTrackedEditsOnPositionInstance(position);
+        const res = this.applyTrackedEditsOnPositionInstance(position, { reverse: true });
         if (!res.valid) return null;
 
         position = res.position;
@@ -177,15 +177,15 @@ export class AnvilDocument {
 
     public getLspLocOfAnvilLoc(loc: AnvilPos): Position | null {
         const position = AnvilLspUtils.anvilLocToLspLoc(loc);
-        const res = this.reverseTrackedEditsOnPositionInstance(position);
+        const res = this.applyTrackedEditsOnPositionInstance(position, { reverse: false });
         if (!res.valid) return null;
         return res.position;
     }
 
     public getLspRangeOfAnvilSpan(span: AnvilSpan): Range | null {
         const range = AnvilLspUtils.anvilSpanToLspRange(span);
-        const rs = this.reverseTrackedEditsOnPositionInstance(range.start);
-        const re = this.reverseTrackedEditsOnPositionInstance(range.end);
+        const rs = this.applyTrackedEditsOnPositionInstance(range.start, { reverse: false });
+        const re = this.applyTrackedEditsOnPositionInstance(range.end, { reverse: false });
         if (!rs.valid || !re.valid) {
             return null;
         }
@@ -235,39 +235,60 @@ export class AnvilDocument {
 
     // Internal Utils
 
-    private reverseTrackedEditsOnPositionInstance(position: Position): { position: Position, valid: boolean } {
+    private applyTrackedEditsOnPositionInstance(position: Position, options: {reverse: boolean}): { position: Position, valid: boolean } {
         if (!this.EXPERIMENTAL_TRACK_POST_AST_TEXT_EDITS) return { position: position, valid: true };
+
+        const reverse = options.reverse;
 
         position = { ...position }; // create a copy of the position to avoid mutating the original
         let valid = true;
 
+        const edits = [...this._postAstTextEdited];
+        if (reverse) {
+            edits.reverse();
+        }
+
         // reverse edits to get the original text in the span
-        for (const edit of this._postAstTextEdited.toReversed()) {
+        for (const edit of edits) {
             let r: Range;
+            let add = false;
+            let del = false;
             if ("add" in edit) {
                 r = edit.add;
-            } else {
+                add = true;
+            } else if ("del" in edit) {
                 r = edit.del;
+                del = true;
+            } else {
+                continue; // should never happen
             }
-            const add = "add" in edit;
-            const del = "del" in edit;
 
-            if (add) {
-                // need to delete the added text segment
+            if (reverse ? add : del) {
+                // need to delete the text segment
                 if (AnvilLspUtils.posBeforePos(position, r.start)) {
                     // deletion is after --> we can ignore it since it doesn't move our text
-                } else if (AnvilLspUtils.posBeforePos(r.end, position)) {
-                    // deletion is before  --> we need to move back by the length of the added text
+                } else if (!AnvilLspUtils.posBeforePos(position, r.end)) {
+                    // deletion is before  --> we need to move back by the length of the deleted text
                     const lineDiff = r.end.line - r.start.line;
                     if (lineDiff === 0) {
-                        // same line, just move character back
-                        position.character -= r.end.character - r.start.character;
+                        // single line change, just move character back if our current position is also on the same line
+                        if (r.start.line === position.line) {
+                            if (position.character >= r.end.character) {
+                                position.character -= r.end.character - r.start.character;
+                            } else if (position.character >= r.start.character) {
+                                // our position is within the deleted text, this means it no longer exists in the original text
+                                position.character = r.start.character;
+                                valid = false;
+                            } else {
+                                // our position is before the deleted text, we can ignore it since it doesn't move our text
+                            }
+                        }
                     } else {
                         // multiple lines,
                         if (r.start.line < position.line) {
-                            // only move lines if the added segment starts before the position line
+                            // only move lines if the deleted segment starts before the current position line
                             position.line -= lineDiff;
-                        } else {
+                        } else if (r.start.line === position.line) {
                             // if the added segment starts on the same line as the position, we also need to move the character back
                             position.character -= r.end.character - r.start.character;
                         }
@@ -281,31 +302,41 @@ export class AnvilDocument {
                 }
             }
 
-            if (del) {
-                // need to add back the deleted text segment
-                if (AnvilLspUtils.posBeforePos(position, r.start)) {
+            if (reverse ? del : add) {
+                // need to add back the text segment
+                if (AnvilLspUtils.posBeforePos(r.start, position)) {
                     // addition is before --> need to move forward by the length of the deleted text
                     const lineDiff = r.end.line - r.start.line;
                     if (lineDiff === 0) {
-                        // same line, just move character forward
-                        position.character += r.end.character - r.start.character;
+                        // single line change, just move character forward if our current position is also on the same line
+                        if (r.start.line === position.line) {
+                            if (position.character >= r.start.character) {
+                                position.character += r.end.character - r.start.character;
+                            } else {
+                                // our position is before the added text, we can ignore it since it doesn't move our text
+                            }
+                        }
                     } else {
                         // multiple lines,
                         if (r.start.line < position.line) {
                             // only move lines if the deleted segment starts before the position line
                             position.line += lineDiff;
-                        } else {
+                        } else if (r.start.line === position.line) {
                             // if the deleted segment starts on the same line as the position, we also need to move the character forward
                             position.character += r.end.character - r.start.character;
+                        } else {
+                            // addition is after the position line, we can ignore it since it doesn't move our text
                         }
                     }
-                } else if (AnvilLspUtils.posBeforePos(r.start, position)) {
+                } else if (AnvilLspUtils.posBeforePos(position, r.start)) {
                     // addition is after  --> we can ignore it since it doesn't move our text
                 } else {
                     // addition is exactly at the position --> we can ignore it since it doesn't move our text
                 }
             }
         }
+
+
         return { position: position, valid: valid };
     }
 
