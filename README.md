@@ -9,7 +9,9 @@
 
 - [Node.js](https://nodejs.org/en) version 22 or later.
 
-To install the language server, view the [installation instructions](#installation) for your editor of choice.
+To install the language server, view the [installation instructions](#language-server-installation) for your editor of choice.
+
+To install a supported version of Anvil, view the [Anvil installation instructions](#anvil-installation).
 
 
 ## Feature Support
@@ -56,7 +58,7 @@ To install the language server, view the [installation instructions](#installati
 They may have bugs and the AST API are subject to breaking changes. Use with caution.
 
 
-## Installation
+## Language Server Installation
 
 Extensions are experimental. They automatically integrate syntax highlighting and LSP support for Anvil files.
 
@@ -125,9 +127,27 @@ If you prefer to manage it manually (still requires `coc.nvim`):
 </details>
 
 
+## Anvil Installation
+
+The Anvil compiler is required for the language server to work, and must be built with experimental AST output support.
+
+This repository includes a submodule of Anvil, pinned to a version with guaranteed compatibility with the language server.
+
+1. Clone the repository with submodules:
+    ```bash
+    git clone --recurse-submodules https://github.com/wxwern/anvil-lsp.git
+    ```
+
+2. Build and install the pinned Anvil version with experimental AST output support:
+    ```bash
+    cd anvil-lsp/anvil
+    eval $(opam env) && dune build --release && dune install
+    ```
 
 
 ### Building
+
+\*WIP
 
 Run the build script in the root of the repository to build all components
 (language server, anvil compiler, all editor extensions):
