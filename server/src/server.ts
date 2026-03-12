@@ -332,7 +332,7 @@ connection.onHover(async (params) => {
 	return {
 		contents: {
 			kind: 'markdown',
-			value: await AnvilDescriptionGenerator.describeNode(node, anvilDocument, getAnvilDocumentForNode)
+			value: AnvilDescriptionGenerator.describeNode(node, anvilDocument, getAnvilDocumentForNode)
 		}
 	};
 

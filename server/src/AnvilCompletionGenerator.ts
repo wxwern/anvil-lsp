@@ -638,7 +638,7 @@ export class AnvilCompletionGenerator {
       switch (typeDef.traverse("data_type", "type").resolve()) {
         case 'record': {
           // struct-like type, look for fields
-          const fields = typeDef.traverse("data_type", "fields").children;
+          const fields = typeDef.traverse("data_type", "elements").children;
           const fieldNames = fields.flatMap(f => f.name).map(n => n || '').filter(n => n);
 
           // completion syntax is typename::{name1 = $1, name2 = $2, ...}
@@ -657,7 +657,7 @@ export class AnvilCompletionGenerator {
             previewTemplate,
             fieldTemplate,
             CompletionItemKind.Struct,
-            `(record fields)`,
+            `(record field)`,
             { node: typeDef }
           )];
         }
@@ -678,8 +678,8 @@ export class AnvilCompletionGenerator {
               ? ':' + v.name!
               : '::' + v.name!,
             CompletionItemKind.EnumMember,
-            `(variant field)`,
-            { node: typeDef /* todo: use the specific variant */ }
+            `(variant value)`,
+            { node: v }
           ));
         }
         default: {

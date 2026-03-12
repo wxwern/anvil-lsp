@@ -136,7 +136,7 @@ export class AnvilDescriptionGenerator {
         options?: { expanded?: boolean | "auto" }
     ): string {
         const kind = this.nodeType(node);
-        const kindStr = kind ? `/* ${kind} */\n` : '';
+        const kindStr = kind && node.isLabelled ? `/* ${kind} */\n` : '';
 
         const span = node.span;
 
@@ -216,7 +216,7 @@ export class AnvilDescriptionGenerator {
                     if (signatureMatch) {
                         return kindStr
                             + prefix
-                            + `${signatureMatch[0].trim()}{ /* ... */ }\n`
+                            + `${signatureMatch[0].trim()} { /* ... */ }\n`
                     }
                 }
 

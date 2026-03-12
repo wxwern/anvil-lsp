@@ -240,6 +240,11 @@ export class AnvilAstNode {
     return typeof node !== "object" || node === null || Object.keys(node).length === 0;
   }
 
+  get isLabelled(): boolean {
+    const kind = this.kind;
+    return !!kind && kind !== '_ast_node';
+  }
+
   get root(): AnvilAstNode {
     if (this._rootCache) {
       return this._rootCache;
@@ -458,6 +463,12 @@ export class AnvilAstNode {
   get definitions(): AnvilAbsoluteLocation[] {
     const defSpan = this.down("def_span").resolveAs(AnvilDefSpanSchema.array()) ?? [];
     return defSpan.map((d) => new AnvilAbsoluteLocation(this._fsBasepath, d.file_name || this.filepath, d));
+  }
+
+  toString(): string {
+    const pathStr = this.nodepath.map((p) => `[${p}]`).join("");
+    const kindStr = this.kind ? ` (${this.kind})` : "";
+    return `AnvilAstNode${pathStr}${kindStr}`;
   }
 }
 
@@ -766,16 +777,31 @@ export class AnvilAst {
       if (
         node &&
         typeof node === "object" &&
-        node.kind === "ast_node" &&
-        node.data &&
-        typeof node.data === "object"
+        node.kind === "ast_node"
       ) {
         const { kind: _, data, ...rest } = node;
-        return {
-          kind: data.kind || node.kind,
-          ...rest,
-          ...data,
-        };
+
+        if (typeof data === "object" && !Array.isArray(data)) {
+          return {
+            kind: data.kind || '_ast_node',
+            ...rest,
+            ...data,
+          };
+
+        } else {
+          return {
+            kind: '_ast_node',
+            type:
+              Array.isArray(data)
+              ? 'array'
+              : data === null || data === undefined
+              ? `unknown`
+              : `${typeof data}`,
+            ...rest,
+            value: data,
+          };
+
+        }
       }
       return node;
     }
