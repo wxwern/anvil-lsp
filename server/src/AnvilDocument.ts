@@ -206,8 +206,12 @@ export class AnvilDocument {
         }
         characters.reverse();
 
+        if (characters.length === 1 && characters[0].match(/[^a-zA-Z0-9_]/)) {
+            characters = [];
+        }
+
         c = position.character;
-        while (characters[characters.length - 1]?.match(/[a-zA-Z0-9_]/)) {
+        while (characters.length === 0 || characters[characters.length - 1]?.match(/[a-zA-Z0-9_]/)) {
             characters.push(document.getText({
                 start: { line: l, character: c },
                 end: { line: l, character: c + 1 }
@@ -215,7 +219,7 @@ export class AnvilDocument {
             c++;
         }
 
-        if (characters.length == 0) {
+        if (characters.length === 0) {
             return null;
         }
 
