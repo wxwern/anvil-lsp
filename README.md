@@ -23,9 +23,16 @@ To install a supported version of Anvil, view the [Anvil installation instructio
     - [x] Type info
     - [x] Definition info
     - [ ] Lifetime info
+    - [ ] Documentation (from source doc comments)
+    - [ ] Built-in syntax descriptions
 - [x] Go to Definition
 - [ ] Go to Type Definition
 - [x] Find All References
+- [ ] Signature Help
+    - [ ] Spawn process arguments (`spawn <proc>(<args>)`)
+    - [ ] Endpoint message send arguments (`send <endpoint>.<message>(<args>)`)
+    - [ ] Record init field values (`Rec::{<field> = <value>; ... }`)
+    - [ ] ... TBA
 - [x] Autocompletion
     - [x] Anvil keywords
     - [x] Document symbols
@@ -48,8 +55,8 @@ To install a supported version of Anvil, view the [Anvil installation instructio
 - [x] Inlay Hints
     - [x] Timing Information
         - [x] Events
-        - [ ] Clock Cycle Hints
-        - [ ] Lifetime Hints
+        - [x] Clock Cycle Hints
+        - [x] Lifetime Hints
 - [ ] Rename/Refactor symbol
 
 (Checkboxes indicate implemented features)
