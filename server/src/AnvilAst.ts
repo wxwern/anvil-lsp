@@ -555,8 +555,6 @@ export class AnvilAstNode {
  */
 export class AnvilAst {
 
-  public static DEBUG = false;
-
   public readonly initDate: Date = new Date();
 
   private readonly roots: Map<string, AnvilAstNode> = new Map();

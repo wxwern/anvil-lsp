@@ -13,23 +13,18 @@ import {
 	DocumentDiagnosticReportKind,
 	type DocumentDiagnosticReport,
 	FileChangeType,
-	TextDocumentPositionParams,
 	CompletionItem,
 	InlayHintKind,
 } from 'vscode-languageserver/node';
-
-import {
-	TextDocument,
-} from 'vscode-languageserver-textdocument';
+import { TextDocument } from 'vscode-languageserver-textdocument';
+import { TextDocumentConnection } from 'vscode-languageserver/lib/common/textDocuments';
 
 import { AnvilLspUtils, AnvilServerSettings, DEFAULT_ANVIL_SERVER_SETTINGS } from './AnvilLspUtils';
 import { AnvilDocument } from './AnvilDocument';
 import { LazyMap } from './LazyMap';
 import { AnvilDescriptionGenerator } from './AnvilDescriptionGenerator';
-import {AnvilCompletionDetail, AnvilCompletionGenerator} from './AnvilCompletionGenerator';
-import {text} from 'stream/consumers';
-import {AnvilAbsoluteLocation, AnvilAst, AnvilAstNode, AnvilAstNodePath, AnvilEventInfo, AnvilSpan} from './AnvilAst';
-import {TextDocumentConnection} from 'vscode-languageserver/lib/common/textDocuments';
+import { AnvilCompletionGenerator} from './AnvilCompletionGenerator';
+import { AnvilAstNode, AnvilAstNodePath, AnvilEventInfo } from './AnvilAst';
 
 
 //
@@ -265,8 +260,6 @@ connection.languages.diagnostics.on(async (params) => {
 
 	await anvilDocument.scheduleCompileDebounced(settings);
 
-	AnvilDescriptionGenerator.DEBUG = !!settings.debug;
-
 	const diagnostics =
 		hasDiagnosticRelatedInformationCapability
 			? await AnvilDescriptionGenerator.describeDiagnostics(anvilDocument, settings.maxNumberOfProblems)
@@ -290,8 +283,6 @@ connection.onHover(async (params) => {
 
 	const settings = await documentSettings.get(document.uri);
 	const D = !!settings.debug;
-
-	AnvilDescriptionGenerator.DEBUG = D;
 
 	const anvilDocument = documentAnvilManagers.get(document.uri);
 	if (!anvilDocument) return !D ? null : {
@@ -332,7 +323,12 @@ connection.onHover(async (params) => {
 	return {
 		contents: {
 			kind: 'markdown',
-			value: AnvilDescriptionGenerator.describeNode(node, anvilDocument, getAnvilDocumentForNode)
+			value: AnvilDescriptionGenerator.describeNode(node, anvilDocument, getAnvilDocumentForNode, {
+				code: true,
+				documentation: true,
+				definitions: true,
+				debug: D,
+			})
 		}
 	};
 
@@ -483,7 +479,12 @@ connection.onCompletionResolve(async (item: CompletionItem) => {
 		if (doc) {
 			const node = doc.anvilAst?.goToRoot(filepath)?.traverse(...nodepathResolved);
 			if (node) {
-				const defDesc = AnvilDescriptionGenerator.describeNode(node, doc, getAnvilDocumentForNode) || '';
+				const defDesc = AnvilDescriptionGenerator.describeNode(node, doc, getAnvilDocumentForNode, {
+					code: true,
+					documentation: true,
+					definitions: true,
+					debug: true,
+				}) || '';
 
 				let descs = [];
 				if (plainDesc) descs.push(plainDesc);
@@ -503,6 +504,7 @@ connection.onCompletionResolve(async (item: CompletionItem) => {
 	};
 	return item;
 });
+
 
 
 // Inlay Hints
@@ -525,8 +527,6 @@ connection.languages.inlayHint.on(async (params) => {
 		console.log(`AST not yet available for document ${uri}`);
 		return [];
 	}
-
-	AnvilAst.DEBUG = !!settings.debug;
 
 	const lineCount = anvilDocument.textDocument.lineCount;
 

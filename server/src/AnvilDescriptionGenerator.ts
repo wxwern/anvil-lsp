@@ -6,7 +6,6 @@ import z from "zod";
 
 export class AnvilDescriptionGenerator {
 
-    public static DEBUG = false;
     private constructor() { }
 
     /**
@@ -129,7 +128,7 @@ export class AnvilDescriptionGenerator {
         };
     }
 
-    private static getNodeDefinitionStr(
+    public static getNodeDefinitionStr(
         node: AnvilAstNode,
         anvilDocument: AnvilDocument,
         supplementaryDocuments?: (f: AnvilAstNode) => AnvilDocument | null,
@@ -276,11 +275,24 @@ export class AnvilDescriptionGenerator {
 
     /**
      * Describes the given node succintly, returning a markdown string that can be used in hover or other LSP features.
+     *
+     * Use the `segments` option to control which sections appear in the output.
+     * All segments default to `false`; callers must explicitly opt in to each one.
      */
     static describeNode(
         node: AnvilAstNode,
         anvilDocument: AnvilDocument,
-        supplementaryDocuments?: (f: AnvilAstNode) => AnvilDocument | null
+        supplementaryDocuments?: (f: AnvilAstNode) => AnvilDocument | null,
+        segments?: {
+            /** Anvil code block showing the node's own source text. */
+            code?: boolean;
+            /** Documentation from source doc-comments (not yet implemented). */
+            documentation?: boolean;
+            /** Definitions referenced by this node. */
+            definitions?: boolean;
+            /** Internal debug information (path, kind, span, raw JSON). */
+            debug?: boolean;
+        }
     ): string {
 
         let documentationSegment = "";
@@ -291,31 +303,38 @@ export class AnvilDescriptionGenerator {
         const kind = this.nodeType(node);
 
         // populate code segment
-        const defFullStr = this.getNodeDefinitionStr(node, anvilDocument, supplementaryDocuments, { expanded: "auto" });
-        codeSegment = "```anvil\n" + defFullStr + "```\n";
-
-        // populate definitions segment
-        const defs = node.definitions;
-        const defStrFormatter = (node: AnvilAstNode) => {
-            return this.getNodeDefinitionStr(node, anvilDocument, supplementaryDocuments, { expanded: defs.length <= 1 ? "auto" : false });
+        if (segments?.code) {
+            const defFullStr = this.getNodeDefinitionStr(node, anvilDocument, supplementaryDocuments, { expanded: "auto" });
+            codeSegment = "```anvil\n" + defFullStr + "```\n";
         }
 
-        const defStrs = (
-            defs
-            .map(def => anvilDocument.anvilAst?.goTo(def))
-            .filter(def => def)
-            .map(def => defStrFormatter(def!))
-        );
+        // populate documentation segment (not yet implemented — placeholder)
+        // if (segments?.documentation) { ... }
 
-        if (defStrs.length > 0) {
-            definitionsSegment += "---\n**Definitions:**\n\n"
-                + "```anvil\n"
-                + defStrs.join("\n")
-                + "```\n";
+        // populate definitions segment
+        if (segments?.definitions) {
+            const defs = node.definitions;
+            const defStrFormatter = (node: AnvilAstNode) => {
+                return this.getNodeDefinitionStr(node, anvilDocument, supplementaryDocuments, { expanded: defs.length <= 1 ? "auto" : false });
+            }
+
+            const defStrs = (
+                defs
+                .map(def => anvilDocument.anvilAst?.goTo(def))
+                .filter(def => def)
+                .map(def => defStrFormatter(def!))
+            );
+
+            if (defStrs.length > 0) {
+                definitionsSegment += "---\n**Definitions:**\n\n"
+                    + "```anvil\n"
+                    + defStrs.join("\n")
+                    + "```\n";
+            }
         }
 
         // populate debug segment
-        if (this.DEBUG) {
+        if (segments?.debug) {
             debugPathSegment += "---\n**DEBUG**\n"
             + `**- Node Path:** ${node.nodepath.map(s => `\`${s}\``).join(".")}\n`
             + `**- Node Kind:** ${kind || "unknown"}\n`
