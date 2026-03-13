@@ -32,11 +32,13 @@ To install a supported version of Anvil, view the [Anvil installation instructio
     - [x] Spawn process arguments (`spawn <proc>(<args>)`)
     - [x] Endpoint message send arguments (`send <endpoint>.<message>(<args>)`)
     - [x] Record init field values (`Rec::{<field> = <value>; ... }`)
+    - [x] Function call arguments (`call <identifier>(<args>)`)
     - [ ] ... TBA
 - [x] Autocompletion
     - [x] Anvil keywords
     - [x] Document symbols
     - [x] Context-aware suggestions
+        - [x] Function call suggestions (`call <identifier>(<args>)`)
         - [x] Endpoint message send/receive (`send`/`recv`) syntax
         - [x] Register read (`*`) syntax
         - [x] Register assign (`set`) syntax
@@ -49,6 +51,7 @@ To install a supported version of Anvil, view the [Anvil installation instructio
         - ... TBA
     - [x] Snippets
         - [x] Automatic delimiter insertion
+        - [x] Function call snippet (`call <identifier>(<args>)`)
         - [x] Spawn process snippet (`spawn <proc>(<args>)`)
         - [x] Record init snippet (`Rec::{<field> = <value>; ... }`)
         - ... TBA

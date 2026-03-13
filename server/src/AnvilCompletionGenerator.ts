@@ -94,6 +94,11 @@ export class AnvilCompletionGenerator {
       return spawnCompletions;
     }
 
+    const callCompletions = this.checkCallHeuristics(position, document);
+    if (callCompletions !== null) {
+      return callCompletions;
+    }
+
     const constructSyntaxCompletions = this.checkConstructSyntaxHeuristics(position, document);
     if (constructSyntaxCompletions !== null) {
       return constructSyntaxCompletions;
@@ -602,6 +607,52 @@ export class AnvilCompletionGenerator {
     return results;
   }
 
+
+
+  private static checkCallHeuristics(position: Position, document: AnvilDocument): AnvilCompletionDetail[] | null {
+    const prefix = this.getPrefixAtPosition(position, document);
+
+    // Heuristic matches when cursor is at: "call func_name" excluding the trailing "("
+    const regex = new RegExp(`${this.SPACER_REGEX_GROUP}call\\s+${this.IDENTIFIER_REGEX_GROUP}?$`, "g");
+    console.log('Checking call completion heuristic with regex:', regex);
+
+    const match = regex.exec(prefix);
+    if (!match) {
+      console.log('Call completion heuristic did not match.');
+      return null;
+    }
+
+    console.log('Call completion heuristic matched!');
+    const funcPartialNamePrefix = match[2] || '';
+    const ast = document.anvilAst;
+    if (!ast) return null;
+
+    // Locate all func_defs in the document and filter by prefix.
+    const funcs = this.getAllNodes(
+      position, document,
+      { filter: n => !!(n.kind === "func_def" && n.name?.startsWith(funcPartialNamePrefix)) }
+    );
+
+    const results = funcs.map(f => {
+      const name = f.name!;
+      const args = f.down("args")?.children.map(c => c.name).filter(n => !!n) || [];
+
+      const argFormat = args.length > 0
+        ? '(' + args.map((a, i) => `\${${i + 1}:${a}}`).join(', ') + ')'
+        : '()';
+
+      return new AnvilCompletionDetail(
+        name,
+        name + argFormat,
+        CompletionItemKind.Function,
+        '(function)',
+        { node: f }
+      );
+    });
+
+    console.log(`Found ${results.length} func candidates for prefix "${funcPartialNamePrefix}"`);
+    return results;
+  }
 
 
 

@@ -34,6 +34,9 @@ export class AnvilSignatureHelpGenerator {
     const spawnHelp = this.checkSpawnSignatureHelp(position, document, getSupplementaryDoc);
     if (spawnHelp !== null) return spawnHelp;
 
+    const callHelp = this.checkCallSignatureHelp(position, document, getSupplementaryDoc);
+    if (callHelp !== null) return callHelp;
+
     const sendHelp = this.checkSendSignatureHelp(position, document, getSupplementaryDoc);
     if (sendHelp !== null) return sendHelp;
 
@@ -179,7 +182,71 @@ export class AnvilSignatureHelpGenerator {
 
 
   // ---------------------------------------------------------------------------
-  // Heuristic 2: send <endpoint>.<message>(<value>)
+  // Heuristic 2: call <func>(<args>)
+  // ---------------------------------------------------------------------------
+
+  private static checkCallSignatureHelp(
+    position: Position,
+    document: AnvilDocument,
+    getSupplementaryDoc: (node: AnvilAstNode) => AnvilDocument | null,
+  ): SignatureHelp | null {
+
+    const prefix = this.getPrefixAtPosition(position, document);
+
+    // Match: call <funcName>(   with an unclosed '('
+    const regex = new RegExp(
+      `${this.SPACER_REGEX_GROUP}call\\s+${this.IDENTIFIER_REGEX_GROUP}\\(([^)]*)$`,
+      'gs',
+    );
+
+    const match = regex.exec(prefix);
+    if (!match) {
+      console.log('[SignatureHelp] call heuristic did not match.');
+      return null;
+    }
+
+    console.log('[SignatureHelp] call heuristic matched!');
+
+    const funcName      = match[2]; // e.g. "add"
+    const textAfterOpen = match[3] ?? ''; // text between '(' and cursor
+    const activeParam   = this.countTopLevelSeparators(textAfterOpen, ',', '(', ')');
+
+    const ast = document.anvilAst;
+    if (!ast) return null;
+
+    // Find the func_def by name across all roots.
+    let funcNode: AnvilAstNode | null = null;
+    for (const root of ast.getAllRoots()) {
+      const found = root.traverse('func_defs').children.find(f => f.name === funcName);
+      if (found) { funcNode = found; break; }
+    }
+
+    if (!funcNode) {
+      console.log(`[SignatureHelp] call: func "${funcName}" not found in AST.`);
+      return null;
+    }
+
+    // Build parameter list from typed_arg children.
+    const args = funcNode.down('args').children;
+
+    const parameters: ParameterInformation[] = args.map(a => {
+      const label = AnvilDescriptionGenerator.getNodeDefinitionStr(a, document, getSupplementaryDoc).trim()
+        || (a.name ?? '?');
+      return { label } satisfies ParameterInformation;
+    });
+
+    // Signature label = plain-text collapsed func signature.
+    const sigLabel = `${funcName}(${args.map(a => a.name ?? '?').join(', ')})`;
+
+    // Documentation panel = markdown (code block + docs).
+    const sigDoc = AnvilDescriptionGenerator.describeNode(funcNode, document, getSupplementaryDoc, this.SIGNATURE_SEGMENTS) || undefined;
+
+    return this.makeSignatureHelp(sigLabel, parameters, activeParam, sigDoc);
+  }
+
+
+  // ---------------------------------------------------------------------------
+  // Heuristic 3: send <endpoint>.<message>(<value>)
   // ---------------------------------------------------------------------------
 
   private static checkSendSignatureHelp(
