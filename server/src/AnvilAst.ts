@@ -133,6 +133,7 @@ export const AnvilEventGraphSchema = z.object({
       events: z.array(
         z.object({
           eid: z.number(),
+          delays: z.array(z.number()).default([]),
           outs: z.array(
             z.object({
               tid: z.number(),
@@ -205,6 +206,9 @@ export type AnvilAbsoluteLocationFilter = (loc: AnvilAbsoluteLocation) => boolea
 
 export class AnvilAstNode {
   private readonly _root: AnvilCompUnit;
+  private readonly _eventIdCycleDelayLookup:
+    { [proc: string]: { [tid: number]: { [eid: number]: number[] } } } | undefined = undefined;
+
   private readonly _path: AnvilAstNodePath;
   private readonly _fsBasepath: string;
 
@@ -217,6 +221,26 @@ export class AnvilAstNode {
     this._fsBasepath = fsBasepath;
     this._root = root;
     this._path = path;
+    this._eventIdCycleDelayLookup = {};
+
+    for (const graph of root.event_graphs ?? []) {
+      const procName = graph.proc_name;
+      if (!this._eventIdCycleDelayLookup[procName]) {
+        this._eventIdCycleDelayLookup[procName] = {};
+      }
+
+      for (const thread of graph.threads) {
+        const tid = thread.tid;
+        if (!this._eventIdCycleDelayLookup[procName][tid]) {
+          this._eventIdCycleDelayLookup[procName][tid] = {};
+        }
+
+        for (const event of thread.events) {
+          const eid = event.eid;
+          this._eventIdCycleDelayLookup[procName][tid][eid] = event.delays;
+        }
+      }
+    }
   }
 
   public static of(fsBasepath: string, root: AnvilCompUnit): AnvilAstNode {
@@ -401,14 +425,56 @@ export class AnvilAstNode {
    * Convenience Accessors
    * ------------------------- */
 
+  private get_event_delays(tid: number, eid: number): number[] {
+    const eventGraphLookup = this.root._eventIdCycleDelayLookup;
+    if (!eventGraphLookup) {
+      return [];
+    }
+
+    let procName: string | null = null;
+    let current: AnvilAstNode | null = this;
+    while (current) {
+      const kind = current.kind;
+      if (kind === "proc_def") {
+        procName = current.down("name").resolveAs(z.string()) ?? null;
+        break;
+      }
+      current = current.isRoot ? null : current.up();
+    }
+
+    if (!procName) {
+      return [];
+    }
+
+    return eventGraphLookup?.[procName]?.[tid]?.[eid] ?? [];
+  }
+
   get event(): string | null {
     const tid = this.traverse("event", "tid").resolveAs(z.number());
     const eid = this.traverse("event", "eid").resolveAs(z.number());
-    if (tid !== null && eid !== null) {
-      return `t${tid} e${eid}`;
+
+    if (tid === null || eid === null) {
+      return null;
     }
 
-    return null;
+    const delays = this.get_event_delays(tid, eid);
+    const delayStr = delays.length > 0 ? 'c' + delays.map(d => '' + d).join('/') : '';
+
+    return delayStr || `t${tid}e${eid}`;
+  }
+
+  get sustainedTillEvent(): string | null {
+    const tid = this.traverse("event", "tid").resolveAs(z.number());
+    const toEid = this.traverse("event", "to_eid").resolveAs(z.number());
+
+    if (tid === null || toEid === null) {
+      return null;
+    }
+
+    const delays = this.get_event_delays(tid, toEid);
+    const delayStr = delays.length > 0 ? 'c' + delays.map(d => '' + d).join('/') : '';
+
+    return delayStr || `t${tid}e${toEid}`;
   }
 
   get name(): string | null {

@@ -531,62 +531,133 @@ connection.languages.inlayHint.on(async (params) => {
 	const locs = anvilDocument.anvilAst.getAllLocatableNodes(anvilDocument.filepath);
 
 	let inlineInject: {[lineno: number]: string} = [];
+	let postfixInject: {[lineno: number]: string} = [];
 	let maxTextLen = 0;
+	const markerLen = 3;
 
 	for (let loc of locs) {
 		const node = anvilDocument.anvilAst?.goTo(loc);
 		if (!node) continue;
 		const event = node.event;
+		const susTillEv = node.sustainedTillEvent;
 		if (!event) continue;
 
-		const lspPos = AnvilLspUtils.anvilLocToLspLoc(loc.span.start);
-		inlineInject[lspPos.line] = event;
+		const lspLine =
+			anvilDocument.getLspLocOfAnvilLoc({ line: loc.span.start.line, col: 0 })?.line ??
+			AnvilLspUtils.anvilLocToLspLoc(loc.span.start).line;
+
+		inlineInject[lspLine] = event;
+		postfixInject[lspLine] = susTillEv ? ` ... sustained till ${susTillEv} ends` : '';
 		maxTextLen = Math.max(maxTextLen, event.length);
 	}
 
-	maxTextLen = Math.pow(2, Math.ceil(Math.log2(maxTextLen + 2)));
+	maxTextLen = Math.max(8, Math.pow(2, Math.ceil(Math.log2(maxTextLen + markerLen))));
 
 	console.log(`Found inlay hints at ${Object.keys(inlineInject)} for document ${uri}`);
 
 	const inlineRanges: [number, string][] = [];
 	for (let line = 0; line < lineCount; line++) {
 		if (inlineInject[line]) {
-			const text = inlineInject[line] + ' -';
+			const text = inlineInject[line];
 			if (text.length < maxTextLen) {
 				// pad with spaces to ensure inlay hints are aligned
-				inlineRanges.push([line, ' '.repeat(maxTextLen - text.length) + text]);
+				inlineRanges.push([line, ' '.repeat(maxTextLen - text.length - markerLen) + text]);
 			} else {
 				inlineRanges.push([line, text]);
 			}
 		} else {
-			inlineRanges.push([line, ' '.repeat(maxTextLen)]);
+			inlineRanges.push([line, ' '.repeat(maxTextLen - markerLen)]);
 		}
 	}
 
 	// replace all consecutive matching lines with "   | " to indicate continuation of the same event
-	let targetedLines : {[key: number]: boolean} = {}
-	const contMarker = ' '.repeat(maxTextLen - 2) + '| ';
-	const endMarker = ' '.repeat(maxTextLen - 2) + ' -';
-	for (let i = 1; i < inlineRanges.length; i++) {
-		if (inlineRanges[i][1] === inlineRanges[i - 1][1] && inlineRanges[i][1].trim() !== '') {
-			targetedLines[i] = true;
-		}
-	}
-	for (let l in targetedLines) {
-		const line = +l;
-		if (!targetedLines[line + 1]) {
-			inlineRanges[line][1] = endMarker;
-		} else {
-			inlineRanges[line][1] = contMarker;
-		}
+	const ascii = false;
+
+	const loneMarker  = (ascii ? ' - ' : ' ─ ');
+	const startMarker = (ascii ? ',- ' : ' ┌ ');
+	const contMarker  = (ascii ? '|  ' : ' │ ');
+	const endMarker   = (ascii ? "'- " : ' └ ');
+
+	let repeats_above: {[i: number]: boolean} = {};
+
+	for (let i = 0; i < inlineRanges.length; i++) {
+		const currText = inlineRanges[i][1].trim();
+		const lastText = inlineRanges[i - 1]?.[1].trim() || '';
+
+		repeats_above[i] = !!currText && currText === lastText;
 	}
 
-	return inlineRanges.map(([position, text]) => {
+	for (let i = 0; i < inlineRanges.length; i++) {
+		const currText = inlineRanges[i][1].trim();
+		if (!currText) {
+			inlineRanges[i][1] = ' '.repeat(maxTextLen);
+			continue;
+		}
+
+		const before_eq_curr = repeats_above[i];
+		const curr_eq_after = repeats_above[i + 1];
+
+		if (!before_eq_curr && curr_eq_after) {
+			// start of a new sequence of repeats, mark with startMarker
+			inlineRanges[i][1] += startMarker;
+		}
+
+		if (before_eq_curr && !curr_eq_after) {
+			// end of a sequence of repeats, mark with endMarker
+			inlineRanges[i][1] =
+				' '.repeat(maxTextLen - markerLen) +
+				endMarker;
+		}
+
+		if (before_eq_curr && curr_eq_after) {
+			// middle of a sequence of repeats, mark with contMarker
+			inlineRanges[i][1] =
+				' '.repeat(maxTextLen - markerLen) +
+				contMarker;
+		}
+
+		if (!before_eq_curr && !curr_eq_after) {
+			// lone line, mark with loneMarker
+			inlineRanges[i][1] += loneMarker;
+		}
+
+		// should not reach here
+	}
+
+	const mergedRanges: [line: number, col: number, text: string][] =
+	[
+		...inlineRanges
+			.map(([line, text]) =>
+				 [line, 0, text] as [number, number, string]),
+
+		...Object.entries(postfixInject)
+			.map(([line, text]) =>
+				 [+line, Infinity, text] as [number, number, string])
+	];
+
+	let calcPostfixPosition = (line: number) => {
+		const lineText = anvilDocument.textDocument.getText({
+			start: { line, character: 0 },
+			end: { line, character: Number.MAX_SAFE_INTEGER }
+		});
+		return lineText.length;
+	}
+
+	return mergedRanges.map(([line, col, text]) => {
+		let pos = {
+			line: line,
+			character: col
+		};
+
+		if (!Number.isFinite(pos?.character ?? 0)) {
+			pos!.character = calcPostfixPosition(pos!.line);
+		}
+
 		return {
-			position: { line: position, character: 0 },
+			position: pos,
 			label: text,
 			kind: InlayHintKind.Type
-		};
+		}
 	});
 });
 
