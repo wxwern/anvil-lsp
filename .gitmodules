@@ -1,3 +1,4 @@
 [submodule "anvil"]
 	path = anvil
 	url = git@github.com:wxwern/anvil.git
+	branch = add-annotated-ast-output
