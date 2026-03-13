@@ -1,7 +1,8 @@
-import {CompletionItem, CompletionItemKind, InsertTextFormat, Position} from "vscode-languageserver";
+import { CompletionItem, CompletionItemKind, InsertTextFormat, Position} from "vscode-languageserver";
 import {AnvilAstNode, AnvilAstNodePath} from "./AnvilAst";
 import {AnvilDocument} from "./AnvilDocument";
 import {type} from "os";
+import {AnvilServerSettings} from "./AnvilLspUtils";
 
 export class AnvilCompletionDetail {
   constructor(
@@ -12,11 +13,11 @@ export class AnvilCompletionDetail {
     private documentation: { node?: AnvilAstNode, desc?: string } = {},
   ) { }
 
-  private get isSnippet() {
+  public get isSnippet() {
     return this.insertText != this.label;
   }
 
-  public lspCompletionItem(options?: { allowOOOSnippet?: boolean }): CompletionItem {
+  public lspCompletionItem(options?: { allowOOOSnippet?: boolean, settings?: AnvilServerSettings }): CompletionItem {
     const outOfOrder = options?.allowOOOSnippet ?? false;
     let insertText = this.insertText;
 
@@ -37,6 +38,17 @@ export class AnvilCompletionDetail {
       detail: this.hint,
       insertText: insertText,
       insertTextFormat: this.isSnippet ? InsertTextFormat.Snippet : InsertTextFormat.PlainText,
+      command: this.isSnippet ? {
+        // Trigger parameter hints after inserting a snippet,
+        // since some snippets may contain placeholders that can be filled in,
+        // and LSP doesn't mandate that this is fired.
+        //
+        // This is NOT an LSP command, it's a VSCode-specific command.
+        //
+        // TODO: add a toggle in settings to configure compatibility modes
+        title: 'Trigger Parameter Hints',
+        command: 'editor.action.triggerParameterHints'
+      } : undefined
     };
   }
 }
