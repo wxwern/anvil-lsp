@@ -30,8 +30,11 @@ export const AnvilSpannableSchema = z.object({
 });
 export type AnvilSpannable = z.infer<typeof AnvilSpannableSchema>;
 
-
-
+export type AnvilEventInfo = {
+  tid: number;
+  eid: number;
+  delays?: number[];
+};
 
 export const AnvilUnknownNodeSchema = z.record(z.string(), z.unknown());
 export type AnvilUnknownNode = z.infer<typeof AnvilUnknownNodeSchema>;
@@ -425,10 +428,10 @@ export class AnvilAstNode {
    * Convenience Accessors
    * ------------------------- */
 
-  private get_event_delays(tid: number, eid: number): number[] {
+  private get_event_delays(tid: number, eid: number): number[] | null {
     const eventGraphLookup = this.root._eventIdCycleDelayLookup;
     if (!eventGraphLookup) {
-      return [];
+      return null;
     }
 
     let procName: string | null = null;
@@ -443,13 +446,14 @@ export class AnvilAstNode {
     }
 
     if (!procName) {
-      return [];
+      return null;
     }
 
-    return eventGraphLookup?.[procName]?.[tid]?.[eid] ?? [];
+    const result = eventGraphLookup?.[procName]?.[tid]?.[eid] ?? [];
+    return result.length > 0 ? result : null;
   }
 
-  get event(): string | null {
+  get event(): AnvilEventInfo | null {
     const tid = this.traverse("event", "tid").resolveAs(z.number());
     const eid = this.traverse("event", "eid").resolveAs(z.number());
 
@@ -458,12 +462,14 @@ export class AnvilAstNode {
     }
 
     const delays = this.get_event_delays(tid, eid);
-    const delayStr = delays.length > 0 ? 'c' + delays.map(d => '' + d).join('/') : '';
-
-    return delayStr || `t${tid}e${eid}`;
+    return {
+      tid,
+      eid,
+      delays: delays ?? undefined,
+    };
   }
 
-  get sustainedTillEvent(): string | null {
+  get sustainedTillEvent(): AnvilEventInfo | null {
     const tid = this.traverse("event", "tid").resolveAs(z.number());
     const toEid = this.traverse("event", "to_eid").resolveAs(z.number());
 
@@ -472,9 +478,11 @@ export class AnvilAstNode {
     }
 
     const delays = this.get_event_delays(tid, toEid);
-    const delayStr = delays.length > 0 ? 'c' + delays.map(d => '' + d).join('/') : '';
-
-    return delayStr || `t${tid}e${toEid}`;
+    return {
+      tid,
+      eid: toEid,
+      delays: delays ?? undefined,
+    };
   }
 
   get name(): string | null {
@@ -546,6 +554,8 @@ export class AnvilAstNode {
  * looking up definitions and references, and extracting location information from nodes, and more.
  */
 export class AnvilAst {
+
+  public static DEBUG = false;
 
   public readonly initDate: Date = new Date();
 
