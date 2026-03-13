@@ -326,8 +326,12 @@ export class AnvilDescriptionGenerator {
             );
 
             if (defStrs.length > 0) {
-                definitionsSegment += "---\n**Definitions:**\n\n"
-                    + "```anvil\n"
+                if (segments?.code) {
+                    definitionsSegment += "\n\n---\n\n**Definitions:**\n\n";
+                }
+
+                definitionsSegment +=
+                    "```anvil\n"
                     + defStrs.join("\n")
                     + "```\n";
             }
@@ -335,12 +339,12 @@ export class AnvilDescriptionGenerator {
 
         // populate debug segment
         if (segments?.debug) {
-            debugPathSegment += "---\n**DEBUG**\n"
+            debugPathSegment += "\n\n---\n\n**DEBUG**\n\n"
             + `**- Node Path:** ${node.nodepath.map(s => `\`${s}\``).join(".")}\n`
             + `**- Node Kind:** ${kind || "unknown"}\n`
             + `**- Node Span:** ${node.span ? `${node.span.start.line}:${node.span.start.col}-${node.span.end.line}:${node.span.end.col}` : "none"}\n`
             + `**- Node Defs:** ${node.definitions.length}\n`
-            + "---\n"
+            + "\n---\n\n"
             + "Raw Data:\n\n"
             + "```json\n"
             + JSON.stringify(node.resolve(), null, 2)
