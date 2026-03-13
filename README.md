@@ -28,10 +28,10 @@ To install a supported version of Anvil, view the [Anvil installation instructio
 - [x] Go to Definition
 - [ ] Go to Type Definition
 - [x] Find All References
-- [ ] Signature Help
-    - [ ] Spawn process arguments (`spawn <proc>(<args>)`)
-    - [ ] Endpoint message send arguments (`send <endpoint>.<message>(<args>)`)
-    - [ ] Record init field values (`Rec::{<field> = <value>; ... }`)
+- [x] Signature Help
+    - [x] Spawn process arguments (`spawn <proc>(<args>)`)
+    - [x] Endpoint message send arguments (`send <endpoint>.<message>(<args>)`)
+    - [x] Record init field values (`Rec::{<field> = <value>; ... }`)
     - [ ] ... TBA
 - [x] Autocompletion
     - [x] Anvil keywords

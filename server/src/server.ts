@@ -24,6 +24,7 @@ import { AnvilDocument } from './AnvilDocument';
 import { LazyMap } from './LazyMap';
 import { AnvilDescriptionGenerator } from './AnvilDescriptionGenerator';
 import { AnvilCompletionGenerator} from './AnvilCompletionGenerator';
+import { AnvilSignatureHelpGenerator } from './AnvilSignatureHelpGenerator';
 import { AnvilAstNode, AnvilAstNodePath, AnvilEventInfo } from './AnvilAst';
 
 
@@ -73,6 +74,10 @@ connection.onInitialize((params: InitializeParams) => {
 			completionProvider: {
 				resolveProvider: true,
 				triggerCharacters: AnvilCompletionGenerator.TRIGGER_CHARS
+			},
+			signatureHelpProvider: {
+				triggerCharacters: AnvilSignatureHelpGenerator.TRIGGER_CHARS,
+				retriggerCharacters: AnvilSignatureHelpGenerator.RETRIGGER_CHARS,
 			},
 			diagnosticProvider: {
 				interFileDependencies: false,
@@ -505,6 +510,37 @@ connection.onCompletionResolve(async (item: CompletionItem) => {
 	return item;
 });
 
+
+// Signature Help
+connection.onSignatureHelp(async (params) => {
+	const anvilDocument = documentAnvilManagers.get(params.textDocument.uri);
+	if (!anvilDocument) {
+		console.log(`Signature help request received for document ${params.textDocument.uri}, but AnvilDocument is not available.`);
+		return null;
+	}
+
+	if (!anvilDocument.anvilAst) {
+		const settings = await documentSettings.get(params.textDocument.uri);
+		await anvilDocument.compile(settings);
+	}
+
+	if (!anvilDocument.anvilAst) {
+		console.log(`AST not yet available for signature help in document ${params.textDocument.uri}`);
+		return null;
+	}
+
+	console.log(`Signature help requested at position ${params.position.line}:${params.position.character}`);
+
+	const result = AnvilSignatureHelpGenerator.getSignatureHelp(
+		params.position,
+		anvilDocument,
+		getAnvilDocumentForNode,
+	);
+
+	console.log(`Signature help result: ${result ? `${result.signatures.length} signature(s)` : 'null'}`);
+
+	return result;
+});
 
 
 // Inlay Hints
