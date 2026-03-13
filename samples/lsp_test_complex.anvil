@@ -1,0 +1,237 @@
+// lsp_test_complex.anvil
+//
+// Complex test file for Anvil LSP features: generic channels, multi-endpoint
+// procs, and a proxy pattern.
+//
+// Features covered:
+//   [H]  Hover               — hover over identifiers for type/definition info
+//   [GD] Go to Definition    — jump to definition of any identifier
+//   [FR] Find All References — find all uses of a symbol
+//   [SH] Signature Help      — ( or { triggers parameter hints
+//   [AC] Autocompletion      — space / trigger chars suggest identifiers
+//   [IH] Inlay Hints         — timing/clock-cycle annotations (requires setting enabled)
+//   [SN] Snippets            — completion inserts snippet with tab stops
+
+
+// ---------------------------------------------------------------------------
+// Generic four-message read/write channel — Bus_ch<T>
+//
+// Models a memory-like interface with separate read and write operations.
+// Two left messages (read_req, write_req) and two right messages
+// (read_resp, write_resp) with interleaved timing.  Exercises:
+//   [H]  Hover over T, each message name, and lifetime references
+//   [GD] Jump to Bus_ch definition from all usage sites
+//   [AC] Lifetime annotation completions after "@" inside this chan block
+//   [AC] Type annotation completions after "left " / "right " in proc sig
+//   [SH] Signature help for all four send/recv sites in BusWorker and Monitor
+// ---------------------------------------------------------------------------
+
+chan Bus_ch<T : type> {
+    left  read_req   : (logic[8]@#1) @#0~2-@dyn,
+    right read_resp  : (T@#1)        @#read_req+1-@#read_req+1,
+    left  write_req  : (T@#1)        @#read_req+1-@#read_req+1,
+    right write_resp : (logic@#1)    @#write_req+1-@#write_req+1
+}
+
+
+// ---------------------------------------------------------------------------
+// Simple one-way push channel — Logger_ch
+//
+// No response messages: the logger just absorbs entries.  Exercises:
+//   [H]  Hover over "Logger_ch", "entry" message
+//   [GD] Jump to Logger_ch definition from BusWorker and pipe_top
+//   [AC] send/recv completions on logger endpoints
+//   [SH] Signature help for "send log_ep.entry("
+// ---------------------------------------------------------------------------
+
+chan Logger_ch {
+    left entry : (logic[8]@#1) @#1-@dyn
+}
+
+
+// ---------------------------------------------------------------------------
+// Utility functions used inside the complex procs
+//
+// [AC] "call " completions now include clamp8, is_aligned
+// [SH] Signature help for clamp8(val, lo, hi) — three parameters
+// [SH] Comma moves through val → lo → hi
+// ---------------------------------------------------------------------------
+
+func clamp8 (val, lo, hi) {
+    if val < lo { lo } else { if val > hi { hi } else { val } }
+}
+
+func is_aligned (addr, mask) {
+    addr & mask
+}
+
+
+// ---------------------------------------------------------------------------
+// BusWorker<T> — proc with two endpoint arguments
+//
+// Holds left Bus_ch<T> (server: handles read and write requests) and
+// right Logger_ch (client: sends a log entry on each read).
+// Demonstrates:
+//   [H]  Hover "BusWorker", "bus_ep", "log_ep" for type info
+//   [GD] Jump from spawn site to BusWorker; jump "Bus_ch" to its def
+//   [FR] Find all references of "BusWorker", "bus_ep", "log_ep"
+//   [AC] After "spawn ", "BusWorker" appears with two-endpoint snippet
+//   [SH] After "spawn BusWorker<logic[8]>(", hint shows both endpoints;
+//        comma advances to the log_ep parameter
+//   [IH] Timing inlay hints on recv/send lines
+//   [AC] After "recv bus_ep.", completions list all four message names
+//   [SH] After "send bus_ep.read_resp(", hint shows read_resp signature
+//   [SH] After "send bus_ep.write_resp(", hint shows write_resp signature
+// ---------------------------------------------------------------------------
+
+proc BusWorker<T : type> (bus_ep : left Bus_ch<T>, log_ep : right Logger_ch) {
+    reg store : T;
+    loop {
+        // Phase 1: serve read request — receive address, log it, respond.
+        // [AC] After "recv bus_ep.", completions list read_req / write_req
+        // [SH] After "send log_ep.entry(", hint shows entry message signature
+        let addr = recv bus_ep.read_req >>
+        send log_ep.entry(addr) >>
+        cycle 1 >>
+        // Phase 2: at read_req+1 — receive write data, send read response.
+        // [SH] After "send bus_ep.read_resp(", hint shows read_resp signature
+        // [SH] After "call clamp8(", hint shows (val, lo, hi) — 3 params
+        let wdata = recv bus_ep.write_req;
+        send bus_ep.read_resp(*store);
+        wdata >>
+        cycle 1 >>
+        send bus_ep.write_resp(1'b1)
+    }
+}
+
+
+// ---------------------------------------------------------------------------
+// Logger — companion proc that consumes Logger_ch entries
+//
+// Holds the left endpoint of Logger_ch to receive entries from BusWorker.
+// Demonstrates:
+//   [H]  Hover "Logger", "log_ep" for type info
+//   [GD] Jump from spawn site to Logger definition
+//   [AC] After "recv log_ep.", completions list "entry"
+// ---------------------------------------------------------------------------
+
+proc Logger (log_ep : left Logger_ch) {
+    loop {
+        // [AC] After "recv log_ep.", completions list "entry"
+        let _e = recv log_ep.entry >>
+        cycle 1
+    }
+}
+
+
+// ---------------------------------------------------------------------------
+// Monitor<T> — proc with two endpoints of the same channel class
+//
+// Acts as a proxy: holds left Bus_ch<T> (serves downstream clients) and
+// right Bus_ch<T> (sends requests to an upstream server).
+// Forwards both read and write operations, demonstrating parallel recv/send
+// across all four Bus_ch messages.
+// Demonstrates:
+//   [H]  Hover "src_ep" / "fwd_ep" — both show Bus_ch<T> endpoint type
+//   [GD] Both identifiers jump to the same Bus_ch definition
+//   [FR] "Bus_ch" has references at both endpoint declarations + spawn site
+//   [AC] After "recv src_ep." / "recv fwd_ep.", all four messages listed
+//   [AC] After "spawn ", "Monitor" appears with snippet:
+//        Monitor<${1:T}>(${2:src_ep}, ${3:fwd_ep})
+//   [SH] After "spawn Monitor<logic[8]>(", both endpoints shown as params
+//   [SH] Signature help for all four send sites inside the loop
+// ---------------------------------------------------------------------------
+
+proc Monitor<T : type> (src_ep : left Bus_ch<T>, fwd_ep : right Bus_ch<T>) {
+    loop {
+        // Phase 1: forward read request upstream.
+        // [AC] After "recv src_ep.", completions list read_req / write_req
+        // [SH] After "send fwd_ep.read_req(", hint shows read_req signature
+        let addr = recv src_ep.read_req >>
+        send fwd_ep.read_req(addr) >>
+        cycle 1 >>
+        // Phase 2: at read_req+1, forward read response downstream while
+        // simultaneously receiving the write request from the downstream client.
+        // [AC] After "recv fwd_ep.", completions list read_resp / write_resp
+        // [SH] After "send src_ep.read_resp(", hint shows read_resp signature
+        let data = recv fwd_ep.read_resp;
+        let wdata = recv src_ep.write_req;
+        data >> wdata >>
+        send src_ep.read_resp(data);
+        send fwd_ep.write_req(wdata) >>
+        cycle 1 >>
+        // Phase 3: at write_req+1, forward write response downstream.
+        // [SH] After "send src_ep.write_resp(", hint shows write_resp signature
+        let _wr = recv fwd_ep.write_resp >>
+        send src_ep.write_resp(1'b1)
+    }
+}
+
+
+// ---------------------------------------------------------------------------
+// pipe_top — top-level proc wiring BusWorker, Logger, and Monitor together
+//
+// Creates Bus_ch and Logger_ch channels, spawns multi-endpoint processes,
+// and runs an interactive loop for LSP testing.
+//
+// [H]  Hover over every identifier — all should resolve
+// [GD] Jump to BusWorker, Monitor, Logger, Bus_ch, Logger_ch definitions
+// [FR] "Bus_ch" referenced at two chan declarations + two proc defs
+// [IH] Rich inlay-hint output once timing info is enabled
+//
+// Suggested interactive edits in the empty loop:
+//   A. [AC][SN] "spawn BusWorker<logic[8]>(" → two-endpoint snippet
+//   B. [SH]     Comma between endpoints advances active param
+//   C. [AC][SN] "spawn Monitor<logic[8]>(" → two-endpoint snippet
+//   D. [AC]     "send proxy_ri." → completions list read_req / write_req
+//   E. [SH]     "send proxy_ri.read_req(" → single-param address hint
+//   F. [SH]     "send proxy_ri.write_req(" → single-param data hint
+//   G. [AC]     "call clamp8(" → function completions and snippet
+//   H. [SH]     Three-parameter signature help with comma navigation
+// ---------------------------------------------------------------------------
+
+proc pipe_top () {
+    // [GD] "Bus_ch" on each line jumps to the same definition
+    // [H]  "worker_le" / "worker_ri" both show Bus_ch<logic[8]> endpoint type
+    chan worker_le -- worker_ri : Bus_ch<logic[8]>;
+    chan proxy_le  -- proxy_ri  : Bus_ch<logic[8]>;
+
+    // Logger channel.
+    // [H]  "log_le" / "log_ri" show Logger_ch endpoint types
+    chan log_le -- log_ri : Logger_ch;
+
+    // Spawn BusWorker with two endpoint arguments.
+    // [SN] Delete and retype "spawn BusW" to trigger the two-endpoint snippet
+    // [SH] After "spawn BusWorker<logic[8]>(", hint shows bus_ep and log_ep;
+    //      comma moves to the log_ep parameter
+    spawn BusWorker<logic[8]>(worker_le, log_ri);
+
+    // Spawn Logger to consume log entries from BusWorker.
+    // [GD] Jump from "Logger" here to the Logger proc definition
+    spawn Logger(log_le);
+
+    // Spawn Monitor with two endpoints of the same channel class.
+    // [SN] Delete and retype "spawn Mon" to get Monitor snippet
+    // [SH] After "spawn Monitor<logic[8]>(", hint shows src_ep then fwd_ep
+    spawn Monitor<logic[8]>(proxy_le, worker_ri);
+
+    // -------------------------------------------------------------------------
+    // Interactive loop — EDIT HERE for complex-example LSP testing
+    //
+    // Suggested edits:
+    //   1. [AC]     "send proxy_ri." → completions list read_req / write_req
+    //   2. [SH]     "send proxy_ri.read_req(" → address hint
+    //   3. [SH]     "send proxy_ri.write_req(" → data hint
+    //   4. [AC]     "call clamp8(" → 3-arg function hint
+    //   5. [SH]     Three-parameter signature help with comma navigation
+    //   6. [AC]     "call is_aligned(" → 2-arg function hint
+    //   7. [H]      Hover over any identifier for hover info
+    //   8. [GD]     Go to definition of any identifier
+    //   9. [FR]     Find all references of "Bus_ch"
+    // -------------------------------------------------------------------------
+
+    loop {
+        // ↓↓↓ Input your expressions here to test LSP features ↓↓↓
+        cycle 1
+    }
+}

@@ -1,0 +1,162 @@
+// lsp_test.anvil
+//
+// Simple test file for all implemented Anvil LSP features.
+// Open this file in an editor with the language server running and use the
+// annotated positions below as targets for each feature.
+//
+// For multi-endpoint and generic-channel examples, see lsp_test_complex.anvil.
+//
+// Features covered:
+//   [D]  Diagnostics         — compile errors shown inline
+//   [H]  Hover               — hover over identifiers for type/definition info
+//   [GD] Go to Definition    — jump to definition of any identifier
+//   [FR] Find All References — find all uses of a symbol
+//   [SH] Signature Help      — ( or { triggers parameter hints
+//   [AC] Autocompletion      — space / trigger chars suggest identifiers
+//   [IH] Inlay Hints         — timing/clock-cycle annotations (requires setting enabled)
+//   [SN] Snippets            — completion inserts snippet with tab stops
+
+
+// ---------------------------------------------------------------------------
+// Type definitions
+// [H]  Hover over "Op", "Packet" to see struct/enum info
+// [GD] Go to definition of "Op" / "Packet" from usage sites below
+// [FR] Find all references of "Op" / "Packet"
+// ---------------------------------------------------------------------------
+
+enum Op { Add, Sub, Nop }
+
+struct Packet {
+    op  : Op,
+    lhs : logic[8],
+    rhs : logic[8]
+}
+
+type byte = logic[8];
+
+
+// ---------------------------------------------------------------------------
+// Channel class — used by send/recv completions and signature help
+// [H]  Hover over "Calc_ch" or message names to see timing contracts
+// [GD] Jump to "Calc_ch" definition from proc endpoints below
+// [AC] After "left " or "right " in a chan declaration, type annotation completions fire
+// [AC] Inside a chan { ... } block, lifetime annotation ("@") completions fire
+// ---------------------------------------------------------------------------
+
+chan Calc_ch {
+    left  req  : (Packet@#1) @#0~2 - @dyn,
+    right resp : (logic[8]@#1) @#req+2 - @#req+2
+}
+
+
+// ---------------------------------------------------------------------------
+// Functions
+// [H]  Hover over "add8" / "sub8" for definition info
+// [GD] Jump to "add8" / "sub8" definition from call sites
+// [FR] Find all references of "add8" / "sub8"
+// [AC] After "call ", typing "a" narrows to "add8"; typing "s" narrows to "sub8"
+// [SN] Selecting "add8" inserts snippet: add8(${1:a}, ${2:b})
+// [SH] After "call add8(", signature help shows parameters (a, b)
+// [SH] Comma advances active parameter to b
+// ---------------------------------------------------------------------------
+
+func add8 (a, b) {
+    a + b
+}
+
+func sub8 (a, b) {
+    a - b
+}
+
+
+// ---------------------------------------------------------------------------
+// Worker process — used by spawn completions and signature help in "top"
+// [H]  Hover over "Worker" or "endp" for proc/endpoint info
+// [GD] Jump to "Worker" definition from spawn site
+// [FR] Find all references of "Worker"
+// [AC] After "spawn ", typing "W" narrows to "Worker"
+// [SN] Selecting "Worker" inserts snippet: Worker(${1:endp})
+// [SH] After "spawn Worker(", signature help shows endpoint parameter
+// ---------------------------------------------------------------------------
+
+proc Worker (endp : left Calc_ch) {
+    reg result_reg : logic[8];
+    recursive {
+        // [H]  Hover over "endp", "req", "resp", "pkt" for type info
+        // [GD] Go to definition of "req" / "resp" inside Calc_ch
+        // [FR] Find all references of "pkt"
+        // [AC] After "recv ", typing "endp" then "." lists message names
+        // [SH] After "send endp.resp(", signature help shows the resp message
+        // [IH] Timing inlay hints appear on the left margin of each expression line
+
+        let pkt = recv endp.req >>
+        set result_reg := if pkt.op == Op::Add {
+            call add8(pkt.lhs, pkt.rhs)
+        } else if pkt.op == Op::Sub {
+            call sub8(pkt.lhs, pkt.rhs)
+        } else {
+            8'd0
+        } >>
+        cycle 1 >>
+        send endp.resp(*result_reg) >>
+        recurse
+    }
+}
+
+
+// ---------------------------------------------------------------------------
+// Top-level process — exercises spawn, channels, registers, record init,
+//                     enum access, and function calls together
+// [H]  Hover over any identifier for type/definition/timing info
+// [GD] Jump to definitions of "Calc_ch", "Worker", "Packet", "Op", etc.
+// [FR] Find all references of "req_count", "pkt", "result"
+// [IH] Timing inlay hints appear along the left margin after compilation
+// ---------------------------------------------------------------------------
+
+proc top () {
+    // Channel creation
+    // [H]  Hover "le" / "ri" to see endpoint types
+    // [GD] Jump from "Calc_ch" here to the chan definition above
+    chan le -- ri : Calc_ch;
+
+    // Spawn
+    // [H]  Hover "Worker" to see proc definition
+    // [SN] Delete "Worker(le)" and re-type "spawn W" to trigger snippet
+    // [SH] After "spawn Worker(", signature help shows endpoint params
+    spawn Worker(le);
+
+    // Registers
+    // [H]  Hover "req_count" / "last_result" for register type info
+    // [GD] Jump to type "byte" definition
+    // [AC] After "set ", typing "req" narrows to "req_count"
+    // [AC] After "*", typing "req" narrows to "req_count"
+    reg req_count   : byte;
+    reg last_result : byte;
+
+    // ---------------------------------------------------------------------------
+    // Main loop — EDIT HERE to test completions and signature help interactively
+    //
+    // Suggested edits to try:
+    //   1. [AC][SN] Type "call " and trigger completion → pick add8 or sub8
+    //   2. [SH]     After "call add8(", type an arg → see signature hint for (a, b)
+    //   3. [AC][SN] Type "spawn " → pick Worker, get snippet
+    //   4. [SH]     After "spawn Worker(", see endpoint hint
+    //   5. [AC]     After "send ri.", trigger completion → lists req / resp messages
+    //   6. [SH]     After "send ri.req(", see Packet signature hint
+    //   7. [AC][SN] Type "Packet::" → get record-init snippet
+    //   8. [SH]     After "Packet::{", see field signature hint (op; lhs; rhs)
+    //   9. [AC]     After "Op::", get enum-variant completions (Add, Sub, Nop)
+    //  10. [AC]     After "*", get register-read completions (req_count, last_result)
+    //  11. [AC]     After "set ", get register-write completions
+    //  12. [H]      Hover over any identifier for hover info
+    //  13. [GD]     Go to definition of any identifier
+    //  14. [FR]     Find all references of "req_count"
+    //  15. [IH]     Enable inlayHints.timingInfo in settings to see clock annotations
+    //  16. [D]      Introduce an error (e.g. type/lifetime issues) to test diagnostics
+    // ---------------------------------------------------------------------------
+
+    loop {
+        // ↓↓↓ Input your expressions here to test LSP features ↓↓↓
+        cycle 1
+    }
+}
