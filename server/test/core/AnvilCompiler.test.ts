@@ -2,7 +2,7 @@
  * Test script for the updated AnvilCompiler with JSON support
  */
 
-import { AnvilCompiler } from '../src/AnvilCompiler';
+import { AnvilCompiler } from '../../src/core/AnvilCompiler';
 import * as path from 'path';
 
 import assert from "node:assert";
@@ -24,7 +24,7 @@ describe('AnvilCompiler', () => {
 	let compiler: AnvilCompiler;
 
 	beforeEach(() => {
-		projectRoot = path.resolve(__dirname, '../..');
+		projectRoot = path.resolve(__dirname, '../../..');
 		compiler = new AnvilCompiler(projectRoot);
 	});
 

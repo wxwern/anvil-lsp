@@ -1,7 +1,7 @@
 import { Diagnostic, DiagnosticSeverity } from "vscode-languageserver";
-import { AnvilDocument } from "./AnvilDocument";
-import { AnvilLspUtils } from "./AnvilLspUtils";
-import { AnvilAstNode } from "./AnvilAst";
+import { AnvilDocument } from "../core/AnvilDocument";
+import { AnvilLspUtils } from "../utils/AnvilLspUtils";
+import { AnvilAstNode } from "../core/ast/AnvilAst";
 import z from "zod";
 
 export class AnvilDescriptionGenerator {

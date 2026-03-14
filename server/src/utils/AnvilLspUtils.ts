@@ -1,16 +1,6 @@
 import { Position, Range } from "vscode-languageserver";
-import { AnvilPos, AnvilSpan } from "./AnvilAst";
-
-export interface AnvilServerSettings {
-    maxNumberOfProblems: number;
-    projectRoot?: string;
-    executablePath?: string;
-    snippets?: { fancy?: boolean; };
-    inlayHints?: { timingInfo?: boolean };
-    debug?: boolean;
-}
-
-export const DEFAULT_ANVIL_SERVER_SETTINGS: AnvilServerSettings = { maxNumberOfProblems: 1000, inlayHints: { timingInfo: true } };
+import { AnvilPos, AnvilSpan } from "../core/ast/schema";
+import { AnvilServerSettings } from "./AnvilServerSettings";
 
 export class AnvilLspUtils {
 

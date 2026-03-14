@@ -34,7 +34,8 @@
 
 import * as path from 'path';
 import { spawn } from 'child_process';
-import { AnvilAst, AnvilCompUnit, AnvilSpan } from './AnvilAst';
+import { AnvilAst } from './ast/AnvilAst';
+import { AnvilCompUnit, AnvilSpan } from './ast/schema';
 
 /**
  * JSON position structure from anvil compiler

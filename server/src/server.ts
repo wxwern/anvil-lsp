@@ -19,14 +19,14 @@ import {
 import { TextDocument } from 'vscode-languageserver-textdocument';
 import { TextDocumentConnection } from 'vscode-languageserver/lib/common/textDocuments';
 
-import { AnvilLspUtils, AnvilServerSettings, DEFAULT_ANVIL_SERVER_SETTINGS } from './AnvilLspUtils';
-import { AnvilDocument } from './AnvilDocument';
-import { LazyMap } from './LazyMap';
-import { AnvilDescriptionGenerator } from './AnvilDescriptionGenerator';
-import { AnvilCompletionGenerator} from './AnvilCompletionGenerator';
-import { AnvilSignatureHelpGenerator } from './AnvilSignatureHelpGenerator';
-import { AnvilAstNode, AnvilAstNodePath, AnvilEventInfo } from './AnvilAst';
-
+import { AnvilLspUtils } from './utils/AnvilLspUtils';
+import { AnvilServerSettings, DEFAULT_ANVIL_SERVER_SETTINGS } from './utils/AnvilServerSettings';
+import { AnvilDocument } from './core/AnvilDocument';
+import { LazyMap } from './utils/LazyMap';
+import { AnvilDescriptionGenerator } from './generators/AnvilDescriptionGenerator';
+import { AnvilCompletionGenerator} from './generators/AnvilCompletionGenerator';
+import { AnvilSignatureHelpGenerator } from './generators/AnvilSignatureHelpGenerator';
+import { AnvilAstNode, AnvilAstNodePath, AnvilEventInfo } from './core/ast/AnvilAst';
 
 //
 // INITIAL SETUP

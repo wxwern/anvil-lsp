@@ -1,8 +1,7 @@
 import { CompletionItem, CompletionItemKind, InsertTextFormat, Position} from "vscode-languageserver";
-import {AnvilAstNode, AnvilAstNodePath} from "./AnvilAst";
-import {AnvilDocument} from "./AnvilDocument";
-import {type} from "os";
-import {AnvilServerSettings} from "./AnvilLspUtils";
+import {AnvilAstNode, AnvilAstNodePath} from "../core/ast/AnvilAst";
+import {AnvilDocument} from "../core/AnvilDocument";
+import { AnvilServerSettings } from "../utils/AnvilServerSettings";
 
 export class AnvilCompletionDetail {
   constructor(

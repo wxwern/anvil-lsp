@@ -1,6 +1,6 @@
 import { ParameterInformation, Position, SignatureHelp, SignatureInformation } from "vscode-languageserver";
-import { AnvilAstNode } from "./AnvilAst";
-import { AnvilDocument } from "./AnvilDocument";
+import { AnvilAstNode } from "../core/ast/AnvilAst";
+import { AnvilDocument } from "../core/AnvilDocument";
 import { AnvilDescriptionGenerator } from "./AnvilDescriptionGenerator";
 import { AnvilCompletionGenerator } from "./AnvilCompletionGenerator";
 
