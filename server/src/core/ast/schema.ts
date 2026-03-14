@@ -1,4 +1,20 @@
 import { z } from "zod";
+import { isAstSchemaVersionCompatible } from "./utils";
+
+// ---------------------------------------------------------------------------
+// Schema versioning and validation
+// ---------------------------------------------------------------------------
+
+export const REQUIRED_AST_SCHEMA_VERSION = "v0.1.0-wip.1";
+
+const AnvilAstSchemaVersionStringSchema = z.string()
+  .refine(
+    (versionStr) => isAstSchemaVersionCompatible(versionStr, REQUIRED_AST_SCHEMA_VERSION),
+    {
+      message: `AST schema must match ${REQUIRED_AST_SCHEMA_VERSION} or newer non-major version!`,
+    }
+  );
+
 
 // ---------------------------------------------------------------------------
 // Primitives
@@ -625,6 +641,7 @@ export type AnvilEventGraph = z.infer<typeof AnvilEventGraphSchema>;
 // ---------------------------------------------------------------------------
 
 export const AnvilCompUnitSchema = z.looseObject({
+  schema: AnvilAstSchemaVersionStringSchema,
   kind: z.literal("compilation_unit"),
   file_name: z
     .string()
