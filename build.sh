@@ -21,13 +21,10 @@ footer() {
 build-anvil() {
     header "Building Anvil..."
 
-    if [ ! -d "./anvil/lib/" ] || [ ! -d "./anvil/bin/" ]; then
-        echo "Anvil submodule not initialized. Initializing now..."
-        git submodule update --init --recursive
-        if [ $? -ne 0 ]; then
-            echo "Failed to retrieve submodules."
-            exit 1
-        fi
+    git submodule update --init --recursive --remote
+    if [ $? -ne 0 ]; then
+        echo "Failed to retrieve submodules."
+        exit 1
     fi
 
     cd ./anvil
