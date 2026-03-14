@@ -19,13 +19,14 @@
 	"scripts": {
 		"build": "tsc -b",
 		"watch": "tsc -b -w",
-		"test": "mocha --require ts-node/register ./test/**/*.test.ts",
+		"test": "mocha --require ts-node/register --require mocha-suppress-logs ./test/**/*.test.ts",
 		"lint": "eslint"
 	},
 	"devDependencies": {
 		"@types/mocha": "^10.0.10",
 		"@types/node": "^22",
 		"mocha": "^11.3.0",
+		"mocha-suppress-logs": "^0.6.0",
 		"ts-node": "^10.9.2",
 		"typescript": "^5.9.2",
 		"typescript-eslint": "^8.39.0"

@@ -155,17 +155,16 @@ This repository includes a submodule of Anvil, pinned to a version with guarante
     ```
 
 
-### Building
+### Development Workflows
 
-\*WIP
-
-Run the build script in the root of the repository to build all components
-(language server, anvil compiler, all editor extensions):
+On *nix systems, run the build/test scripts in the root of the repository
+to build/test all components (language server, anvil compiler, all editor extensions):
 ```bash
 ./build.sh
+./test.sh
 ```
 
-Or specify a component as an argument to build only said component, e.g.,
+Or specify component(s) as argument(s) to build only said component, e.g.,
 ```bash
 ./build.sh anvil vscode
 ```

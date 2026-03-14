@@ -20,10 +20,14 @@ footer() {
 
 build-anvil() {
     header "Building Anvil..."
-    git submodule update --init --recursive
-    if [ $? -ne 0 ]; then
-        echo "Failed to update git submodules."
-        exit 1
+
+    if [ ! -d "./anvil/lib/" ] || [ ! -d "./anvil/bin/" ]; then
+        echo "Anvil submodule not initialized. Initializing now..."
+        git submodule update --init --recursive
+        if [ $? -ne 0 ]; then
+            echo "Failed to retrieve submodules."
+            exit 1
+        fi
     fi
 
     cd ./anvil
@@ -68,7 +72,6 @@ build-vim() {
     return $RESULT
 }
 
-# check for all matching args
 if [[ -z "$@" ]]; then
     echo "Building all components..."
     build-anvil

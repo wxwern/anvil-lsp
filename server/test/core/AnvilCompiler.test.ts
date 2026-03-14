@@ -64,4 +64,16 @@ describe('AnvilCompiler', () => {
 		assert.strictEqual(importResult.success, true, 'Expected compilation to succeed');
 		assert.strictEqual(importResult.errors.length, 0, 'Expected no errors');
 	});
+
+	it('should compile the simple lsp test file successfully', async () => {
+		const importResult = await compiler.compile('samples/lsp_test.anvil');
+		assert.strictEqual(importResult.success, true, 'Expected compilation to succeed');
+		assert.strictEqual(importResult.errors.length, 0, 'Expected no errors');
+	});
+
+	it('should compile the complex lsp test file successfully', async () => {
+		const importResult = await compiler.compile('samples/lsp_test_complex.anvil');
+		assert.strictEqual(importResult.success, true, 'Expected compilation to succeed');
+		assert.strictEqual(importResult.errors.length, 0, 'Expected no errors');
+	});
 });
