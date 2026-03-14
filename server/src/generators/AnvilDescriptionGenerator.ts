@@ -104,7 +104,7 @@ export class AnvilDescriptionGenerator {
         let bestDoc = anvilDocument;
 
         if (node.filepath ===
-            anvilDocument.anvilAst?.goToRoot(anvilDocument.filepath)?.filepath) {
+            anvilDocument.anvilAst?.root(anvilDocument.filepath)?.filepath) {
 
             // node is in the main document
             // we can use the main document for text retrieval
@@ -149,7 +149,7 @@ export class AnvilDescriptionGenerator {
             const defLines = defRawStr.split('\n');
 
             let prefix = "";
-            const nodeFilepath = node.location?.filepath;
+            const nodeFilepath = node.absoluteSpan?.filepath;
             if (nodeFilepath && isSupplementary) {
                 prefix = `/* ${nodeFilepath} */\n`;
             }
@@ -320,7 +320,7 @@ export class AnvilDescriptionGenerator {
 
             const defStrs = (
                 defs
-                .map(def => anvilDocument.anvilAst?.goTo(def))
+                .map(def => anvilDocument.anvilAst?.node(def))
                 .filter(def => def)
                 .map(def => defStrFormatter(def!))
             );

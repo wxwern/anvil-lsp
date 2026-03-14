@@ -279,7 +279,7 @@ export class AnvilSignatureHelpGenerator {
     if (!ast) return null;
 
     // Resolve the endpoint — could be a proc arg or a local channel_def endpoint.
-    const procNode = ast.goToClosest(
+    const procNode = ast.closestNode(
       document.filepath, position.line, position.character,
       n => n.kind === 'proc_def',
     );
@@ -303,7 +303,7 @@ export class AnvilSignatureHelpGenerator {
 
     // Resolve the channel class definition.
     const channelClassDef = endpointNode.definitions
-      .map(d => ast.goTo(d))
+      .map(d => ast.node(d))
       .find(n => n?.kind === 'channel_class_def');
 
     if (!channelClassDef) {

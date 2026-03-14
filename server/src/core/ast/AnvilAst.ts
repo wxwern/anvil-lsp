@@ -11,13 +11,13 @@ import {
 } from "./schema";
 
 
-// ============================================================
-// Core Types
-// ============================================================
 
-export type AnvilAstNodePath = (string | number)[];
 
-export class AnvilAbsoluteLocation {
+/**
+ * AnvilAbsoluteSpan represents a specific span of source code of a specifc Anvil compilation unit.
+ * This contains the exact file path and the span (start and end line/column) of the code corresponding to an AST node.
+ */
+export class AnvilAbsoluteSpan {
   public readonly basepath: string;
   public readonly filepath: string;
   public readonly span: Readonly<AnvilSpan>;
@@ -43,14 +43,41 @@ export class AnvilAbsoluteLocation {
   }
 }
 
-export type AnvilAbsoluteLocationFilter = (loc: AnvilAbsoluteLocation) => boolean;
+type AnvilAbsoluteSpanFilter = (loc: AnvilAbsoluteSpan) => boolean;
 
+
+
+
+/**
+ * AnvilAstNodePath represents the path from the root of an AST to a specific node.
+ */
+export type AnvilAstNodePath = (string | number)[];
+
+
+
+
+
+/**
+ * AnvilEventInfo represents the unique identifier of an event in Anvil,
+ * consisting of its thread ID (tid), event ID (eid), and optional possible delays since start.
+ */
 export type AnvilEventInfo = {
   tid: number;
   eid: number;
   delays?: number[];
 };
 
+
+
+
+
+/**
+ * AnvilAstNode represents a lazily-resolved node in the AST of an Anvil compilation unit.
+ *
+ * It provides methods for navigating the AST, resolving nodes, and extracting information such as names, kinds, types, spans, and definitions.
+ *
+ * Each AnvilAstNode is associated with a specific path from the root of the AST, allowing for efficient navigation and resolution.
+ */
 export class AnvilAstNode {
   private readonly _root: AnvilCompUnit;
   private readonly _eventIdCycleDelayLookup:
@@ -90,32 +117,70 @@ export class AnvilAstNode {
     }
   }
 
+  /**
+   * Factory method to create an AnvilAstNode from a given AnvilCompUnit. This will be the root node of the AST.
+   *
+   * @param fsBasepath The base path for resolving file paths in the AST.
+   * @param root The AnvilCompUnit representing the root of the AST.
+   * @returns An instance of AnvilAstNode representing the root of the AST.
+   */
   public static of(fsBasepath: string, root: AnvilCompUnit): AnvilAstNode {
     return new AnvilAstNode(fsBasepath, root, []);
   }
 
+  /**
+   * The path from the root of the AST to this node,
+   * represented as an array of keys (string for object properties, number for array indices).
+   *
+   * This path can be used to navigate from the root node to this node by following the keys in order.
+   */
   get nodepath(): AnvilAstNodePath & { 0?: keyof AnvilCompUnit } {
     return [...this._path];
   }
 
+  /**
+   * The file path of the compilation unit this node belongs to, relative to the base path.
+   */
   get filepath(): string {
     return this.resolveRoot().file_name;
   }
 
+  /**
+   * Indicates whether this node is the root of the AST.
+   *
+   * A root node has an empty {nodepath}.
+   */
   get isRoot(): boolean {
     return this._path.length === 0;
   }
 
+  /**
+   * Indicates whether this node is a leaf node (i.e., it has no children).
+   *
+   * A leaf node is defined as a node whose resolved value is not an object, or is null, or is an empty object.
+   */
   get isLeaf(): boolean {
     const node = this.resolve();
     return typeof node !== "object" || node === null || Object.keys(node).length === 0;
   }
 
+  /**
+   * Indicates whether this node is labelled with a {kind} that represents a
+   * specific AST node type.
+   *
+   * This excludes unlabelled AST nodes that were unable to be flattened
+   * (which have the synthetic kind '_ast_node').
+   */
   get isLabelled(): boolean {
     const kind = this.kind;
     return !!kind && kind !== '_ast_node';
   }
 
+  /**
+   * Returns the root node of the AST. This is the node corresponding to the entire compilation unit.
+   *
+   * The root node is cached after the first lookup for efficient subsequent access.
+   */
   get root(): AnvilAstNode {
     if (this._rootCache) {
       return this._rootCache;
@@ -129,6 +194,13 @@ export class AnvilAstNode {
     return node;
   }
 
+  /**
+   * Returns ALL children of this node.
+   *
+   * - For array nodes, children are indexed by their array index.
+   * - For object nodes, children are indexed by their property keys.
+   * - For leaf nodes, no children will be returned (there are none).
+   */
   get children(): AnvilAstNode[] {
     const resolved = this.resolve();
     if (typeof resolved !== "object" || resolved === null) {
@@ -146,6 +218,23 @@ export class AnvilAstNode {
     return childNodes;
   }
 
+  /**
+   * Traverses the AST from the current node using a relative path of keys, returning the resulting node.
+   *
+   * The relative path can include:
+   * - String keys for object properties
+   * - Number keys for array indices
+   * - Special keys:
+   *   - "." to stay at the current node
+   *   - ".." to move up to the parent node
+   *
+   * Example usage:
+   * - `node.traverse("field1", "field2")` to access `node.field1.field2`
+   * - `node.traverse(0, "field")` to access `node[0].field`
+   * - `node.traverse("..", "sibling")` to access the sibling node at `node.up().sibling`
+   *
+   * Invalid paths will only fail upon data resolution, not during traversal.
+   */
   traverse(...relative: AnvilAstNodePath): AnvilAstNode {
     let current: AnvilAstNode = this;
     for (const key of relative) {
@@ -162,6 +251,11 @@ export class AnvilAstNode {
     return current;
   }
 
+  /**
+   * Moves up to the parent node. If already at the root, returns itself.
+   *
+   * Parent nodes are cached for efficient subsequent access.
+   */
   up(): AnvilAstNode {
     if (this._upCache) {
       return this._upCache;
@@ -181,6 +275,19 @@ export class AnvilAstNode {
     return parentNode;
   }
 
+  /**
+   * Moves down to the child node specified by the given key.
+   *
+   * Child nodes are cached for efficient subsequent access.
+   *
+   * Note that this method does not validate whether the child node actually exists in the AST.
+   * Invalid paths will only fail upon data resolution, not during traversal.
+   *
+   * @param key The key of the child node to move down to.
+   *            This can be a string (for object properties) or a number (for array indices).
+   *
+   * @returns The child AnvilAstNode corresponding to the given key.
+   */
   down(key: string | number): AnvilAstNode {
     if (key in this._downCache) {
       return this._downCache[key];
@@ -193,6 +300,11 @@ export class AnvilAstNode {
     return node;
   }
 
+  /**
+   * Returns an iterable of all descendant nodes in the AST, including itself.
+   *
+   * The nodes are returned in depth-first pre-order traversal.
+   */
   getAllDescendants(): Iterable<AnvilAstNode> {
     const stack: AnvilAstNode[] = [this];
     return {
@@ -297,6 +409,10 @@ export class AnvilAstNode {
     return result.length > 0 ? result : null;
   }
 
+  /**
+   * Obtains the unique event (tid, eid, and optional possible delays since start)
+   * for the event corresponding to this node, if applicable.
+   */
   get event(): AnvilEventInfo | null {
     const tid = this.traverse("event", "tid").resolveAs(z.number());
     const eid = this.traverse("event", "eid").resolveAs(z.number());
@@ -313,6 +429,10 @@ export class AnvilAstNode {
     };
   }
 
+  /**
+   * Obtains the event that this node is sustained till, if applicable.
+   * This implies the node's execution spans until the occurrence of the target event (inclusive).
+   */
   get sustainedTillEvent(): AnvilEventInfo | null {
     const tid = this.traverse("event", "tid").resolveAs(z.number());
     const toEid = this.traverse("event", "to_eid").resolveAs(z.number());
@@ -329,10 +449,19 @@ export class AnvilAstNode {
     };
   }
 
+  /**
+   * Obtains the unique name of this node, if it exists, and is unique.
+   *
+   * If this node has multiple names, this method returns `null` to avoid ambiguity.
+   * Use the plural {names} property to obtain all names in this case.
+   */
   get name(): string | null {
     return this.names.length === 1 ? this.names[0] : null;
   }
 
+  /**
+   * Obtains all names this node has. May return an empty list if none exists.
+   */
   get names(): string[] {
     let name = this.down("name").resolveAs(z.string());
     if (name !== null) {
@@ -354,35 +483,66 @@ export class AnvilAstNode {
     return [];
   }
 
+  /**
+   * Obtains the span of this node, if it has a valid codespan.
+   * Otherwise, returns null.
+   */
   get span(): Readonly<AnvilSpan> | null {
     return this.down("span").resolveAs(AnvilSpanSchema) ?? null;
   }
 
+
+  /**
+   * Obtains the kind of this node, if applicable. Otherwise, returns null.
+   */
   get kind(): string | null {
     return this.down("kind").resolveAs(z.string()) ?? null;
   }
 
+  /**
+   * Obtains the type of this node, if applicable. Otherwise, returns null.
+   */
   get type(): string | null {
     return this.down("type").resolveAs(z.string()) ?? null;
   }
 
-  get location(): AnvilAbsoluteLocation | null {
+  /**
+   * Obtains the absolute span of this node, if it has a valid codespan.
+   * Otherwise, returns null.
+   *
+   * The absolute span includes the full file path (resolved from the base path)
+   * and the span (line/column information).
+   */
+  get absoluteSpan(): AnvilAbsoluteSpan | null {
     const span = this.span;
     if (!span) return null;
 
     const filepath = this.filepath;
-    return new AnvilAbsoluteLocation(this._fsBasepath, filepath, span);
+    return new AnvilAbsoluteSpan(this._fsBasepath, filepath, span);
   }
 
-  get definition(): AnvilAbsoluteLocation | null {
+  /**
+   * Obtains the absolute span of the definition corresponding to this node,
+   * if they exist.
+   *
+   * If multiple definitions exist, the first one (usually the most relevant) is returned.
+   */
+  get definition(): AnvilAbsoluteSpan | null {
     return this.definitions[0] ?? null;
   }
 
-  get definitions(): AnvilAbsoluteLocation[] {
+  /**
+   * Obtains the absolute spans of all definitions corresponding to this node,
+   * if they exist. May return an empty list if no definitions exist.
+   */
+  get definitions(): AnvilAbsoluteSpan[] {
     const defSpan = this.down("def_span").resolveAs(AnvilDefSpanSchema.array()) ?? [];
-    return defSpan.map((d) => new AnvilAbsoluteLocation(this._fsBasepath, d.file_name || this.filepath, d));
+    return defSpan.map((d) => new AnvilAbsoluteSpan(this._fsBasepath, d.file_name || this.filepath, d));
   }
 
+  /**
+   * Returns a string representation of this node for debugging purposes.
+   */
   toString(): string {
     const pathStr = this.nodepath.map((p) => `[${p}]`).join("");
     const kindStr = this.kind ? ` (${this.kind})` : "";
@@ -391,8 +551,11 @@ export class AnvilAstNode {
 }
 
 
+
+
+
 /**
- * AnvilAst is the main class representing the entire AST of Anvil compilation units.
+ * AnvilAst is the top-level class representing every AST for every Anvil compilation unit.
  *
  * It provides methods for navigating to specific nodes based on source locations,
  * looking up definitions and references, and extracting location information from nodes, and more.
@@ -404,16 +567,16 @@ export class AnvilAst {
   private readonly roots: Map<string, AnvilAstNode> = new Map();
 
   /** filename -> sorted array of all locations in file */
-  private readonly orderedLocations: Map<string, AnvilAbsoluteLocation[]> = new Map();
+  private readonly orderedLocations: Map<string, AnvilAbsoluteSpan[]> = new Map();
 
   /** loc-uid -> path from root to node */
   private readonly astNodePathIndex: Map<string, AnvilAstNodePath> = new Map();
 
   /** loc-uid (source definition) -> referrers */
-  private readonly referenceIndex: Map<string, AnvilAbsoluteLocation[]> = new Map();
+  private readonly referenceIndex: Map<string, AnvilAbsoluteSpan[]> = new Map();
 
   /** loc-uid (parent) -> subfields locations */
-  private readonly subfieldIndex: Map<string, AnvilAbsoluteLocation[]> = new Map();
+  private readonly subfieldIndex: Map<string, AnvilAbsoluteSpan[]> = new Map();
 
   /**
    * Parser for Anvil AST output. Accepts a raw AST output (already parsed from JSON),
@@ -452,7 +615,10 @@ export class AnvilAst {
    * Navigation To Node
    * ------------------------- */
 
-  goTo(loc: AnvilAbsoluteLocation): AnvilAstNode | null {
+  /**
+   * Returns the AnvilAstNode corresponding to the given absolute span location, if it exists in the AST.
+   */
+  node(loc: AnvilAbsoluteSpan): AnvilAstNode | null {
     const root = this.roots.get(loc.fullpath);
     if (!root) {
       return null;
@@ -466,17 +632,34 @@ export class AnvilAst {
     return root.traverse(...path);
   }
 
-  goToRoot(filename: string): AnvilAstNode | undefined {
+  /**
+   * Returns the root AnvilAstNode for the given filename, if it exists in the AST.
+   */
+  root(filename: string): AnvilAstNode | undefined {
     return this.roots.get(filename);
   }
 
-  goToClosest(filename: string, line: number, col: number,
+  /**
+   * Finds and returns the closest AnvilAstNode to the given source location (line and column)
+   * within the specified file.
+   *
+   * For behavior details, see the `findClosestLocation` method.
+   *
+   * @param filename The name of the file to search within.
+   * @param line The line number of the source location to find the closest node to.
+   * @param col The column number of the source location to find the closest node to.
+   * @param predicate Optional filter function to apply to candidate nodes.
+   *                  Only nodes for which this function returns true will be considered.
+   *
+   * @returns An AnvilAstNode representing the closest AST node to the specified location
+   */
+  closestNode(filename: string, line: number, col: number,
               predicate?: (n: AnvilAstNode) => boolean): AnvilAstNode | null {
-    const closestLoc = this.findClosestLocation(
+    const closestLoc = this.findClosestAbsoluteSpan(
       filename, line, col,
       predicate
         ? (loc) => {
-          const n = this.goTo(loc);
+          const n = this.node(loc);
           return !!n && predicate!(n);
         }
         : undefined
@@ -484,7 +667,7 @@ export class AnvilAst {
     if (!closestLoc) {
       return null;
     }
-    return this.goTo(closestLoc);
+    return this.node(closestLoc);
   }
 
 
@@ -492,15 +675,21 @@ export class AnvilAst {
    * Reference Lookup
    * ------------------------- */
 
-  definitionsOf(loc: AnvilAbsoluteLocation, filterCond?: AnvilAbsoluteLocationFilter): Readonly<AnvilAbsoluteLocation[]> {
-    const node = this.goTo(loc);
+  /**
+   * Returns the absolute spans of the definitions corresponding to the given location, if they exist.
+   */
+  definitionsOf(loc: AnvilAbsoluteSpan, filterCond?: AnvilAbsoluteSpanFilter): Readonly<AnvilAbsoluteSpan[]> {
+    const node = this.node(loc);
     if (!node) {
       return [];
     }
     return node.definitions.filter(filterCond ?? (() => true));
   }
 
-  referencesTo(loc: AnvilAbsoluteLocation, filterCond?: AnvilAbsoluteLocationFilter): Readonly<AnvilAbsoluteLocation[]> {
+  /**
+   * Returns the absolute spans of the references corresponding to the given location, if they exist.
+   */
+  referencesTo(loc: AnvilAbsoluteSpan, filterCond?: AnvilAbsoluteSpanFilter): Readonly<AnvilAbsoluteSpan[]> {
     const refs = this.referenceIndex.get(loc.id());
     if (!refs) {
       return [];
@@ -508,7 +697,10 @@ export class AnvilAst {
     return refs.filter(filterCond ?? (() => true));
   }
 
-  subfieldsOf(loc: AnvilAbsoluteLocation, filterCond?: AnvilAbsoluteLocationFilter): Readonly<AnvilAbsoluteLocation[]> {
+  /**
+   * Returns the absolute spans of the subfields corresponding to the given location, if they exist.
+   */
+  subfieldsOf(loc: AnvilAbsoluteSpan, filterCond?: AnvilAbsoluteSpanFilter): Readonly<AnvilAbsoluteSpan[]> {
     const subfields = this.subfieldIndex.get(loc.id());
     if (!subfields) {
       return [];
@@ -516,7 +708,18 @@ export class AnvilAst {
     return subfields.filter(filterCond ?? (() => true));
   }
 
-  getAllLocatableNodes(filename?: string, filterCond?: AnvilAbsoluteLocationFilter): Readonly<AnvilAbsoluteLocation[]> {
+  /**
+   * Returns all locatable nodes in the AST, optionally filtered by filename and/or a custom filter condition.
+   *
+   * A locatable node is any node that has an associated absolute span
+   * (i.e., it corresponds to a specific location in the source code).
+   *
+   * @param filename Optional filename to filter nodes by. If provided, only nodes in this file will be returned.
+   * @param filterCond Optional custom filter function to further filter nodes based on their absolute span.
+   *
+   * @return An array of AnvilAbsoluteSpan objects representing the locatable nodes that match the specified criteria.
+   */
+  getAllLocatableNodes(filename?: string, filterCond?: AnvilAbsoluteSpanFilter): Readonly<AnvilAbsoluteSpan[]> {
 
     if (!filename) {
       const filenames = Array.from(this.orderedLocations.keys());
@@ -533,7 +736,7 @@ export class AnvilAst {
     const locations = this.orderedLocations.get(filename);
     console.log(`Getting all locations for file ${filename}, total found: ${locations?.length ?? 0}`);
     for (const loc of locations ?? []) {
-      const node = this.goTo(loc);
+      const node = this.node(loc);
       if (!node) {
         continue;
       }
@@ -543,6 +746,9 @@ export class AnvilAst {
 
   }
 
+  /**
+   * Returns all root AST nodes, each corresponding to a different compilation unit (file).
+   */
   getAllRoots(): Readonly<AnvilAstNode[]> {
     return Array.from(this.roots.values());
   }
@@ -551,12 +757,36 @@ export class AnvilAst {
    * Location Extraction
    * ------------------------- */
 
-  findLocation(node: AnvilAstNode): AnvilAbsoluteLocation | null {
-    return node.location;
+  /**
+   * Extracts the absolute span associated with a given AST node, if available.
+   *
+   * @param node The AnvilAstNode for which to extract the location.
+   * @returns An AnvilAbsoluteSpan representing the source location of the node, or null if no location is available.
+   */
+  findAbsoluteSpan(node: AnvilAstNode): AnvilAbsoluteSpan | null {
+    return node.absoluteSpan;
   }
 
-  findClosestLocation(filename: string, line: number, col: number,
-                      predicate?: (l: AnvilAbsoluteLocation) => boolean): AnvilAbsoluteLocation | null {
+
+  /**
+   * Finds the closest AST node's absolute span to a given source location (line and column) within a specified file.
+   *
+   * The search can be optionally filtered by a custom predicate function that takes an
+   * AnvilAbsoluteSpan and returns a boolean.
+   *
+   * The closest node is determined based on the _first node with the smallest codespan_ that
+   * contains the specified line and column.
+   *
+   * @param filename The name of the file to search within.
+   * @param line The line number of the source location to find the closest node to (1-based).
+   * @param col The column number of the source location to find the closest node to (1-based).
+   * @param predicate Optional filter function to apply to candidate nodes. Only nodes for which this function returns true will be considered.
+   *
+   * @returns An AnvilAbsoluteSpan representing the closest AST node to the specified location
+   *          that satisfies the predicate, or `null` if no such node is found.
+   */
+  findClosestAbsoluteSpan(filename: string, line: number, col: number,
+                      predicate?: (l: AnvilAbsoluteSpan) => boolean): AnvilAbsoluteSpan | null {
     console.log(`Search: closest AST node in ${filename} to line ${line}, col ${col}`);
 
     const locations = this.orderedLocations.get(filename);
@@ -565,7 +795,7 @@ export class AnvilAst {
       return null;
     }
 
-    let best: { loc: AnvilAbsoluteLocation, size: number } | null = null;
+    let best: { loc: AnvilAbsoluteSpan, size: number } | null = null;
 
     for (const loc of locations) {
       const isBefore = loc.span.end.line < line || (loc.span.end.line === line && loc.span.end.col < col);
@@ -598,6 +828,12 @@ export class AnvilAst {
    * Helpers
    * ------------------------- */
 
+  /**
+   * Resolves and returns the root compilation unit (AnvilCompUnit) for a given filename.
+   *
+   * @param filename The name of the file for which to resolve the root compilation unit.
+   * @returns An AnvilCompUnit representing the root of the AST for the specified file, or null if no such file is found in the AST.
+   */
   resolveRoot(filename: string): AnvilCompUnit | null {
     const rootNode = this.roots.get(filename);
     if (!rootNode) {
@@ -631,6 +867,21 @@ export class AnvilAst {
     });
   }
 
+  /**
+   * Populates all lookup tables by traversing the entire AST starting from the given node.
+   *
+   * For each node, if it has a valid span, it is added to the `astNodePathIndex` and `orderedLocations`.
+   * If it has definition spans, they are added to the `referenceIndex` for reverse lookup.
+   *
+   * The traversal is done in depth-first pre-order manner, and the path from the root to each node is
+   * tracked and stored.
+   *
+   * @param node The current node being traversed.
+   * @param fbasepath The base path for resolving file paths in the AST.
+   * @param fpath The file path of the current compilation unit being processed.
+   * @param path The path from the root to the current node, represented as an array of keys.
+   * @returns The total number of nodes processed in this subtree (including the current node).
+   */
   private deepMapNode(node: unknown, fbasepath: string, fpath: string, path: AnvilAstNodePath = []): number {
     if (node instanceof AnvilAstNode) {
       throw new Error("Unexpected AnvilAstNode instance during deepMapNode traversal");
@@ -640,7 +891,7 @@ export class AnvilAst {
       const spannableNode = AnvilSpannableSchema.safeParse(node);
       if (spannableNode.success) {
         const spannable = spannableNode.data;
-        const location = new AnvilAbsoluteLocation(fbasepath, fpath, spannable.span);
+        const location = new AnvilAbsoluteSpan(fbasepath, fpath, spannable.span);
 
         this.astNodePathIndex.set(location.id(), path);
         this.orderedLocations.get(fpath)!.push(location);
@@ -648,7 +899,7 @@ export class AnvilAst {
         // Populate reference index for reverse definition lookup
         const defSpans = spannable.def_span ?? [];
         for (const defSpan of defSpans) {
-          const defLocation = new AnvilAbsoluteLocation(fbasepath, defSpan.file_name || fpath, defSpan);
+          const defLocation = new AnvilAbsoluteSpan(fbasepath, defSpan.file_name || fpath, defSpan);
           const defLocId = defLocation.id();
           if (!this.referenceIndex.has(defLocId)) {
             this.referenceIndex.set(defLocId, []);
@@ -690,6 +941,15 @@ export class AnvilAst {
     return 1;
   }
 
+  /**
+   * Flattens unnecessarily nested AST nodes by merging the "kind" and "data" fields of each node
+   * into a single object recursively.
+   *
+   * This cleans up the AST structure and makes information like codespan and definition spans
+   * more directly accessible at the top level of each information node, together with all of its
+   * other fields within data.
+   *
+   */
   private static deepFlattenNode(node: unknown): unknown {
     const flatten = (node: any) => {
       if (

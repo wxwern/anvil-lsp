@@ -1,12 +1,12 @@
 import { Position, Range } from "vscode-languageserver";
-import { AnvilPos, AnvilSpan } from "../core/ast/schema";
+import { AnvilPosition, AnvilSpan } from "../core/ast/schema";
 import { AnvilServerSettings } from "./AnvilServerSettings";
 
 export class AnvilLspUtils {
 
     private constructor() { }
 
-    static anvilLocToLspLoc(loc: AnvilPos): Position {
+    static anvilPosToLspPos(loc: AnvilPosition): Position {
         return {
             line: loc.line - 1,
             character: loc.col
@@ -15,12 +15,12 @@ export class AnvilLspUtils {
 
     static anvilSpanToLspRange(span: AnvilSpan): Range {
         return {
-            start: this.anvilLocToLspLoc(span.start),
-            end: this.anvilLocToLspLoc(span.end)
+            start: this.anvilPosToLspPos(span.start),
+            end: this.anvilPosToLspPos(span.end)
         };
     }
 
-    static lspLocToAnvilLoc(loc: Position): AnvilPos {
+    static lspPosToAnvilPos(loc: Position): AnvilPosition {
         return {
             line: loc.line + 1,
             col: loc.character
@@ -29,8 +29,8 @@ export class AnvilLspUtils {
 
     static lspRangeToAnvilSpan(range: Range): AnvilSpan {
         return {
-            start: this.lspLocToAnvilLoc(range.start),
-            end: this.lspLocToAnvilLoc(range.end)
+            start: this.lspPosToAnvilPos(range.start),
+            end: this.lspPosToAnvilPos(range.end)
         };
     }
 

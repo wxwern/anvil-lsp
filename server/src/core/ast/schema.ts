@@ -1,12 +1,12 @@
 import { z } from "zod";
 
 
-export const AnvilPosSchema = z.object({ line: z.number(), col: z.number() });
-export type AnvilPos = z.infer<typeof AnvilPosSchema>;
+export const AnvilPositionSchema = z.object({ line: z.number(), col: z.number() });
+export type AnvilPosition = z.infer<typeof AnvilPositionSchema>;
 
 export const AnvilSpanSchema = z.object({
-  start: AnvilPosSchema,
-  end: AnvilPosSchema,
+  start: AnvilPositionSchema,
+  end: AnvilPositionSchema,
 });
 export type AnvilSpan = z.infer<typeof AnvilSpanSchema>;
 

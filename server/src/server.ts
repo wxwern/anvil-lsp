@@ -141,7 +141,7 @@ const documentAnvilManagers = LazyMap.onCacheMiss<string, AnvilDocument | undefi
 });
 
 const getAnvilDocumentForNode = (node: AnvilAstNode) => {
-	const fullpath = node.location?.fullpath;
+	const fullpath = node.absoluteSpan?.fullpath;
 	if (!fullpath) return null;
 
 	const doc =
@@ -378,7 +378,7 @@ connection.onDefinition(async (params) => {
 	}
 
 	const updatedDefs = allDefs.filter(def =>
-		!!(ast.goTo(def)?.names.includes(identifierUnderCursor ?? ''))
+		!!(ast.node(def)?.names.includes(identifierUnderCursor ?? ''))
 	);
 
 	const defs = updatedDefs.length > 0 ? updatedDefs : allDefs;
@@ -422,7 +422,7 @@ connection.onReferences(async (params) => {
 		return null;
 	}
 
-	const loc = node.location;
+	const loc = node.absoluteSpan;
 	if (!loc) {
 		console.log(`Node unexpectedly does not have a valid location`);
 		return null;
@@ -482,7 +482,7 @@ connection.onCompletionResolve(async (item: CompletionItem) => {
 
 		const doc = documentAnvilManagers.get(fileUri);
 		if (doc) {
-			const node = doc.anvilAst?.goToRoot(filepath)?.traverse(...nodepathResolved);
+			const node = doc.anvilAst?.root(filepath)?.traverse(...nodepathResolved);
 			if (node) {
 				const defDesc = AnvilDescriptionGenerator.describeNode(node, doc, getAnvilDocumentForNode, {
 					code: true,
@@ -586,19 +586,19 @@ connection.languages.inlayHint.on(async (params) => {
 	}
 
 	for (let loc of locs) {
-		const node = anvilDocument.anvilAst?.goTo(loc);
+		const node = anvilDocument.anvilAst?.node(loc);
 		if (!node) continue;
 		const event = formatEvent(node.event);
 		const susTillEv = formatEvent(node.sustainedTillEvent);
 		if (!event) continue;
 
 		const lspStartLine =
-			anvilDocument.getLspLocOfAnvilLoc({ line: loc.span.start.line, col: 0 })?.line ??
-			AnvilLspUtils.anvilLocToLspLoc(loc.span.start).line;
+			anvilDocument.getLspPosOfAnvilPos({ line: loc.span.start.line, col: 0 })?.line ??
+			AnvilLspUtils.anvilPosToLspPos(loc.span.start).line;
 
 		const lspEndLine =
-			anvilDocument.getLspLocOfAnvilLoc({ line: loc.span.end.line, col: 0 })?.line ??
-			AnvilLspUtils.anvilLocToLspLoc(loc.span.end).line;
+			anvilDocument.getLspPosOfAnvilPos({ line: loc.span.end.line, col: 0 })?.line ??
+			AnvilLspUtils.anvilPosToLspPos(loc.span.end).line;
 
 		for (let l = lspStartLine; l <= lspEndLine; l++) {
 			// Assumption: locs are discovered pre-order

@@ -1,6 +1,6 @@
 import { CompletionItem, CompletionItemKind, InsertTextFormat, Position} from "vscode-languageserver";
-import {AnvilAstNode, AnvilAstNodePath} from "../core/ast/AnvilAst";
-import {AnvilDocument} from "../core/AnvilDocument";
+import { AnvilAstNode, AnvilAstNodePath } from "../core/ast/AnvilAst";
+import { AnvilDocument } from "../core/AnvilDocument";
 import { AnvilServerSettings } from "../utils/AnvilServerSettings";
 
 export class AnvilCompletionDetail {
@@ -157,7 +157,7 @@ export class AnvilCompletionGenerator {
     if (!ast) return null;
 
     // Locate registers in the closest proc scope, and filter by prefix.
-    const regs = ast.goToClosest(
+    const regs = ast.closestNode(
       document.filepath, position.line, position.character,
       n => n.kind === 'proc_def'
     )?.traverse("body", "regs").children;
@@ -198,7 +198,7 @@ export class AnvilCompletionGenerator {
     if (!ast) return null;
 
     // Locate registers in the closest proc scope, and filter by prefix.
-    const regs = ast.goToClosest(
+    const regs = ast.closestNode(
       document.filepath, position.line, position.character,
       n => n.kind === 'proc_def'
     )?.traverse("body", "regs").children;
@@ -249,7 +249,7 @@ export class AnvilCompletionGenerator {
 
     // Attempt: endpoint_def search
     // Locate endpoints in the closest proc scope, and filter by prefix.
-    const endpoints = ast.goToClosest(
+    const endpoints = ast.closestNode(
       document.filepath, position.line, position.character,
       n => n.kind === 'proc_def'
     )?.traverse("args").children;
@@ -257,7 +257,7 @@ export class AnvilCompletionGenerator {
     const matchingEndpoints = endpoints?.filter(e => e.name?.startsWith(endpointPartialNamePrefix)) || [];
 
     // Attempt: channel_def search
-    const channels = ast.goToClosest(
+    const channels = ast.closestNode(
       document.filepath, position.line, position.character,
       n => n.kind === 'proc_def'
     )?.traverse("body", "channels").children
@@ -288,7 +288,7 @@ export class AnvilCompletionGenerator {
     for (const endpointCandidate of endpointCandidates) {
       const channelClassDef = endpointCandidate
         .definitions
-        .map(d => ast.goTo(d))
+        .map(d => ast.node(d))
         .find(n => n?.kind === 'channel_class_def');
 
       if (!channelClassDef) continue;
@@ -367,7 +367,7 @@ export class AnvilCompletionGenerator {
     const ast = document.anvilAst;
     if (!ast) return completionItems;
 
-    const messageDefs = ast.goToClosest(
+    const messageDefs = ast.closestNode(
       document.filepath, position.line, position.character,
       n => n.kind === 'channel_class_def'
     )?.traverse("messages").children
@@ -780,17 +780,17 @@ export class AnvilCompletionGenerator {
     ? (
       scoped
       ? Array.of(...(
-          ast.goToClosest(document.filepath, position.line, position.character, scopeCond) ?? ast.goToRoot(document.filepath)
+          ast.closestNode(document.filepath, position.line, position.character, scopeCond) ?? ast.root(document.filepath)
         )?.traverse(...relnodepath).children ?? [])
       : ast.getAllRoots().flatMap(n => n.traverse(...relnodepath).children)
     )
     : (
       scoped
       ? Array.of(...(
-          ast.goToClosest(document.filepath, position.line, position.character, scopeCond) ?? ast.goToRoot(document.filepath)
+          ast.closestNode(document.filepath, position.line, position.character, scopeCond) ?? ast.root(document.filepath)
         )?.getAllDescendants() ?? [])
 
-      : ast.getAllLocatableNodes().map(l => ast.goTo(l)).filter(n => !!n)
+      : ast.getAllLocatableNodes().map(l => ast.node(l)).filter(n => !!n)
     );
 
 

@@ -1,6 +1,6 @@
 import { TextDocument } from "vscode-languageserver-textdocument";
 import { AnvilAst, AnvilAstNode } from "./ast/AnvilAst";
-import { AnvilPos, AnvilSpan } from "./ast/schema";
+import { AnvilPosition, AnvilSpan } from "./ast/schema";
 import { Range, Position, TextDocumentContentChangeEvent } from "vscode-languageserver";
 import { AnvilCompilationResult, AnvilCompiler } from "./AnvilCompiler";
 import { AnvilLspUtils } from "../utils/AnvilLspUtils";
@@ -235,13 +235,13 @@ export class AnvilDocument {
         if (!res.valid) return null;
 
         position = res.position;
-        let anvilLoc = AnvilLspUtils.lspLocToAnvilLoc(position);
+        let anvilLoc = AnvilLspUtils.lspPosToAnvilPos(position);
 
-        return this._anvilAst.goToClosest(this.filepath, anvilLoc.line, anvilLoc.col);
+        return this._anvilAst.closestNode(this.filepath, anvilLoc.line, anvilLoc.col);
     }
 
-    public getLspLocOfAnvilLoc(loc: AnvilPos): Position | null {
-        const position = AnvilLspUtils.anvilLocToLspLoc(loc);
+    public getLspPosOfAnvilPos(loc: AnvilPosition): Position | null {
+        const position = AnvilLspUtils.anvilPosToLspPos(loc);
         const res = this.applyTrackedEditsOnPositionInstance(position, { reverse: false });
         if (!res.valid) return null;
         return res.position;
