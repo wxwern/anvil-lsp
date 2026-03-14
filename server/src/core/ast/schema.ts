@@ -546,33 +546,42 @@ export type AnvilSharedVarDef = z.infer<typeof AnvilSharedVarDefSchema>;
 // { kind: "proc_def_body", type: "native"|"extern", ... }
 // ---------------------------------------------------------------------------
 
+export const AnvilProcDefBodyNativeSchema = z.looseObject({
+  kind: z.literal("proc_def_body"),
+  type: z.literal("native"),
+  channels: z.array(AnvilChannelSchema),
+  spawns: z.array(AnvilSpawnDefSchema),
+  regs: z.array(AnvilRegisterSchema),
+  shared_vars: z.array(AnvilSharedVarDefSchema),
+  threads: z.array(AnvilThreadSchema),
+});
+
+export type AnvilProcDefBodyNative = z.infer<typeof AnvilProcDefBodyNativeSchema>;
+
+export const AnvilProcDefBodyExternSchema = z.looseObject({
+  kind: z.literal("proc_def_body"),
+  type: z.literal("extern"),
+  module_name: z.string(),
+  named_ports: z.array(
+    z.looseObject({ name: z.string(), type: z.string() })
+  ),
+  msg_ports: z.array(
+    z.looseObject({
+      msg_spec: AnvilMessageSpecifierSchema,
+      data_port: z.string().nullable(),
+      valid_port: z.string().nullable(),
+      ack_port: z.string().nullable(),
+    })
+  ),
+});
+
+export type AnvilProcDefBodyExtern = z.infer<typeof AnvilProcDefBodyExternSchema>;
+
 export const AnvilProcBodySchema = z.discriminatedUnion("type", [
-  z.looseObject({
-    kind: z.literal("proc_def_body"),
-    type: z.literal("native"),
-    channels: z.array(AnvilChannelSchema),
-    spawns: z.array(AnvilSpawnDefSchema),
-    regs: z.array(AnvilRegisterSchema),
-    shared_vars: z.array(AnvilSharedVarDefSchema),
-    threads: z.array(AnvilThreadSchema),
-  }),
-  z.looseObject({
-    kind: z.literal("proc_def_body"),
-    type: z.literal("extern"),
-    module_name: z.string(),
-    named_ports: z.array(
-      z.looseObject({ name: z.string(), type: z.string() })
-    ),
-    msg_ports: z.array(
-      z.looseObject({
-        msg_spec: AnvilMessageSpecifierSchema,
-        data_port: z.string().nullable(),
-        valid_port: z.string().nullable(),
-        ack_port: z.string().nullable(),
-      })
-    ),
-  }),
+  AnvilProcDefBodyNativeSchema,
+  AnvilProcDefBodyExternSchema,
 ]);
+
 export type AnvilProcBody = z.infer<typeof AnvilProcBodySchema>;
 
 // ---------------------------------------------------------------------------

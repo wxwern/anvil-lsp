@@ -54,6 +54,25 @@ type AnvilAbsoluteSpanFilter = (loc: AnvilAbsoluteSpan) => boolean;
 export type AnvilAstNodePath = (string | number)[];
 
 
+type AnvilAstKeyL0 = keyof AnvilCompUnit;
+type AnvilAstKeyL1 = keyof AnvilCompUnit[AnvilAstKeyL0];
+type AnvilAstKeyL2 = keyof AnvilCompUnit[AnvilAstKeyL0][AnvilAstKeyL1];
+type AnvilAstKeyL3 = keyof AnvilCompUnit[AnvilAstKeyL0][AnvilAstKeyL1][AnvilAstKeyL2];
+type AnvilAstKeyL4 = keyof AnvilCompUnit[AnvilAstKeyL0][AnvilAstKeyL1][AnvilAstKeyL2][AnvilAstKeyL3];
+type AnvilAstKeyL5 = keyof AnvilCompUnit[AnvilAstKeyL0][AnvilAstKeyL1][AnvilAstKeyL2][AnvilAstKeyL3][AnvilAstKeyL4];
+
+/**
+ * AnvilAstNodeAbsolutePath represents a path from the root of an AST to a specific node,
+ * with the keys at each level explicitly typed according to the AnvilCompUnit schema.
+ */
+export type AnvilAstNodeAbsolutePath = AnvilAstNodePath & {
+  0?: AnvilAstKeyL0,
+  1?: AnvilAstKeyL1,
+  2?: AnvilAstKeyL2,
+  3?: AnvilAstKeyL3,
+  4?: AnvilAstKeyL4,
+  5?: AnvilAstKeyL5,
+};
 
 
 
@@ -76,22 +95,29 @@ export type AnvilEventInfo = {
  *
  * It provides methods for navigating the AST, resolving nodes, and extracting information such as names, kinds, types, spans, and definitions.
  *
+ * It has compile-time generic type parameter T representing the expected type of the resolved node at this path,
+ * allowing for type-safe access to node properties after resolution. If omitted, T defaults to `any`,
+ * which disables compile-time type safety guarantees (you can still use runtime checks like `resolveAs(schema)`).
+ *
+ * It also has a generic type parameter U representing the expected type of the parent node. You should not populate this type parameter
+ * manually - it is automatically inferred and populated when you navigate the AST using the `up()`  and `down(_:)` methods.
+ *
  * Each AnvilAstNode is associated with a specific path from the root of the AST, allowing for efficient navigation and resolution.
  */
-export class AnvilAstNode {
+export class AnvilAstNode<T = any, U extends AnvilAstNode | unknown = unknown> {
   private readonly _root: AnvilCompUnit;
   private readonly _eventIdCycleDelayLookup:
     { [proc: string]: { [tid: number]: { [eid: number]: number[] } } } | undefined = undefined;
 
-  private readonly _path: AnvilAstNodePath;
+  private readonly _path: AnvilAstNodeAbsolutePath;
   private readonly _fsBasepath: string;
 
-  private _rootCache: AnvilAstNode | undefined = undefined;
-  private _upCache: AnvilAstNode | undefined = undefined;
-  private _downCache: { [key: string]: AnvilAstNode } = {};
-  private _resolveCache: unknown | null | undefined = undefined;
+  private _rootCache: AnvilAstNode<AnvilCompUnit> | undefined = undefined;
+  private _upCache: U | undefined = undefined;
+  private _downCache: { [key: string | number]: AnvilAstNode } = {};
+  private _resolveCache?: unknown extends T ? unknown : (T | null);
 
-  private constructor(fsBasepath: string, root: AnvilCompUnit, path: AnvilAstNodePath = []) {
+  private constructor(fsBasepath: string, root: AnvilCompUnit, path: AnvilAstNodeAbsolutePath = []) {
     this._fsBasepath = fsBasepath;
     this._root = root;
     this._path = path;
@@ -128,7 +154,7 @@ export class AnvilAstNode {
    * @param root The AnvilCompUnit representing the root of the AST.
    * @returns An instance of AnvilAstNode representing the root of the AST.
    */
-  public static of(fsBasepath: string, root: AnvilCompUnit): AnvilAstNode {
+  public static of(fsBasepath: string, root: AnvilCompUnit): AnvilAstNode<AnvilCompUnit> {
     return new AnvilAstNode(fsBasepath, root, []);
   }
 
@@ -138,7 +164,7 @@ export class AnvilAstNode {
    *
    * This path can be used to navigate from the root node to this node by following the keys in order.
    */
-  get nodepath(): AnvilAstNodePath & { 0?: keyof AnvilCompUnit } {
+  get nodepath(): AnvilAstNodeAbsolutePath {
     return [...this._path];
   }
 
@@ -154,7 +180,7 @@ export class AnvilAstNode {
    *
    * A root node has an empty {nodepath}.
    */
-  get isRoot(): boolean {
+  isRoot(): this is AnvilAstNode<AnvilCompUnit> {
     return this._path.length === 0;
   }
 
@@ -163,7 +189,7 @@ export class AnvilAstNode {
    *
    * A leaf node is defined as a node whose resolved value is not an object, or is null, or is an empty object.
    */
-  get isLeaf(): boolean {
+  isLeaf(): boolean {
     const node = this.resolve();
     return typeof node !== "object" || node === null || Object.keys(node).length === 0;
   }
@@ -185,17 +211,17 @@ export class AnvilAstNode {
    *
    * The root node is cached after the first lookup for efficient subsequent access.
    */
-  get root(): AnvilAstNode {
+  get root(): AnvilAstNode<AnvilCompUnit> {
     if (this._rootCache) {
       return this._rootCache;
     }
 
     let node: AnvilAstNode = this;
-    while (!node.isRoot) {
-      node = node.up();
+    while (!node.isRoot()) {
+      node = (node as AnvilAstNode).up();
     }
-    this._rootCache = node;
-    return node;
+    this._rootCache = node as AnvilAstNode<AnvilCompUnit>;
+    return this._rootCache;
   }
 
   /**
@@ -205,25 +231,35 @@ export class AnvilAstNode {
    * - For object nodes, children are indexed by their property keys.
    * - For leaf nodes, no children will be returned (there are none).
    */
-  get children(): AnvilAstNode[] {
+  get children(): T extends unknown[] ? AnvilAstNode<T[number]>[] : AnvilAstNode<T[keyof T]>[] {
     const resolved = this.resolve();
-    if (typeof resolved !== "object" || resolved === null) {
-      return [];
-    }
+
+    let childNodes: AnvilAstNode<any>[] = [];
 
     if (Array.isArray(resolved)) {
-      return resolved.map((_, idx) => this.down(idx));
+      childNodes = resolved.map((_, idx) => this.down(idx as keyof T));
+
+    } else if (typeof resolved === "object") {
+      for (const key in resolved) {
+        childNodes.push(this.down(key));
+      }
     }
 
-    const childNodes: AnvilAstNode[] = [];
-    for (const key in resolved) {
-      childNodes.push(this.down(key));
-    }
-    return childNodes;
+    return childNodes as T extends unknown[] ? AnvilAstNode<T[number]>[] : AnvilAstNode<T[keyof T]>[];
   }
 
   /**
    * Traverses the AST from the current node using a relative path of keys, returning the resulting node.
+   *
+   * This operation has no compile-time safety guarantees and allows for special operators "." and "..".
+   *
+   * You can use it to traverse to any node in the AST relative to the current node,
+   * but TS compile-time type resolution of expected data in this node will be `unknown`.
+   * For stronger guarantees, use the `up` and `down` methods to navigate the AST,
+   * which guarantees explicit typing at each step.
+   *
+   * If the path is invalid (e.g., a key does not exist at some point in the path),
+   * the `resolve` or `resolveAs` method will return `null`.
    *
    * The relative path can include:
    * - String keys for object properties
@@ -233,13 +269,11 @@ export class AnvilAstNode {
    *   - ".." to move up to the parent node
    *
    * Example usage:
-   * - `node.traverse("field1", "field2")` to access `node.field1.field2`
-   * - `node.traverse(0, "field")` to access `node[0].field`
-   * - `node.traverse("..", "sibling")` to access the sibling node at `node.up().sibling`
-   *
-   * Invalid paths will only fail upon data resolution, not during traversal.
+   * - `node.unsafeTraverse("field1", "field2")` to access `node.field1.field2`
+   * - `node.unsafeTraverse(0, "field")` to access `node[0].field`
+   * - `node.unsafeTraverse("..", "sibling")` to access the sibling node at `node.up().sibling`
    */
-  traverse(...relative: AnvilAstNodePath): AnvilAstNode {
+  unsafeTraverse(...relative: AnvilAstNodePath): AnvilAstNode<unknown> {
     let current: AnvilAstNode = this;
     for (const key of relative) {
       switch (key) {
@@ -249,7 +283,7 @@ export class AnvilAstNode {
           current = current.up();
           break;
         default:
-          current = current.down(key);
+          current = current.down(key as keyof T);
       }
     }
     return current;
@@ -259,24 +293,35 @@ export class AnvilAstNode {
    * Moves up to the parent node. If already at the root, returns itself.
    *
    * Parent nodes are cached for efficient subsequent access.
+   *
+   * This method asserts the parent's containing data if it were to be resolved,
+   * which guarantees type-safety for any subsequent `up`, `down` or `resolve` calls.
    */
-  up(): AnvilAstNode {
+  up(): T extends AnvilCompUnit ? AnvilAstNode<AnvilCompUnit> : U & AnvilAstNode {
+
     if (this._upCache) {
-      return this._upCache;
+      return this._upCache as (
+        T extends AnvilCompUnit ? AnvilAstNode<AnvilCompUnit> : U & AnvilAstNode
+      );
     }
-    if (this.isRoot) {
-      this._rootCache = this; // Cache root node
-      return this; // Already at root, can't go up
+
+    if (this.isRoot()) {
+      // Already at root, cannot go up --> return self
+      return this.root as (
+        T extends AnvilCompUnit ? AnvilAstNode<AnvilCompUnit> : U & AnvilAstNode
+      );
     }
 
     const parentPath = this._path.slice(0, -1);
-    const parentNode = new AnvilAstNode(this._fsBasepath, this._root, parentPath);
+    const parentNode = new AnvilAstNode(this._fsBasepath, this._root, parentPath) as U & AnvilAstNode;
 
     parentNode._rootCache = this._rootCache;
-    parentNode._downCache[this._path[this._path.length - 1]] = this;
+    parentNode._downCache[this._path[this._path.length - 1]] = this as AnvilAstNode;
     this._upCache = parentNode;
 
-    return parentNode;
+    return parentNode as (
+      T extends AnvilCompUnit ? AnvilAstNode<AnvilCompUnit> : U & AnvilAstNode
+    );
   }
 
   /**
@@ -284,24 +329,30 @@ export class AnvilAstNode {
    *
    * Child nodes are cached for efficient subsequent access.
    *
-   * Note that this method does not validate whether the child node actually exists in the AST.
-   * Invalid paths will only fail upon data resolution, not during traversal.
+   * This method asserts the child node's containing data if it were to be resolved.
+   * It guarantees type-safety for any subsequent `up`, `down` or `resolve` calls on the child node.
+   *
+   * Type checking will fail at compile time if the path traversal is possibly invalid,
+   * resulting in TypeScript type error of the supplied key or AnvilAstNode<never>.
+   * For instance, if this node does not have property "foo", or if this node is a
+   * discriminated union of types where some have property "foo" and some don't,
+   * then `down("foo")` will fail in compile-time.
    *
    * @param key The key of the child node to move down to.
    *            This can be a string (for object properties) or a number (for array indices).
    *
    * @returns The child AnvilAstNode corresponding to the given key.
    */
-  down(key: string | number): AnvilAstNode {
+  down<K extends keyof T>(key: K): AnvilAstNode<T[K], AnvilAstNode<T, U>> {
     if (key in this._downCache) {
-      return this._downCache[key];
+      return this._downCache[key as string | number] as AnvilAstNode<T[K], AnvilAstNode<T, U>>;
     }
 
-    const node = new AnvilAstNode(this._fsBasepath, this._root, [...this._path, key]);
-    node._upCache = this;
+    const node = new AnvilAstNode(this._fsBasepath, this._root, [...this._path, key as string | number]);
+    node._upCache = this as any;
     node._rootCache = this._rootCache;
-    this._downCache[key] = node;
-    return node;
+    this._downCache[key as string | number] = node;
+    return node as AnvilAstNode<T[K], AnvilAstNode<T, U>>;
   }
 
   /**
@@ -309,12 +360,12 @@ export class AnvilAstNode {
    *
    * The nodes are returned in depth-first pre-order traversal.
    */
-  getAllDescendants(): Iterable<AnvilAstNode> {
+  getAllDescendants(): Iterable<AnvilAstNode<unknown>> {
     const stack: AnvilAstNode[] = [this];
     return {
       [Symbol.iterator]() {
         return {
-          next(): IteratorResult<AnvilAstNode> {
+          next(): IteratorResult<AnvilAstNode<unknown>> {
             if (stack.length === 0) {
               return { done: true, value: undefined };
             }
@@ -328,15 +379,109 @@ export class AnvilAstNode {
   }
 
   /* -------------------------
+   * Type Resolution
+   * ------------------------- */
+
+  /**
+   * Type-checks that the current node's data resolution satisfies the provided Zod schema - quickly, when possible.
+   *
+   * @param schema The Zod schema to check the resolved node against.
+   * @param strict If true, performs a strict check that the resolved node matches the schema exactly.
+   *               If false (default), performs a rapid type check that does not fully evaluate the schema,
+   *               based on the `kind` field and `type` field when possible.
+   *
+   * @return `true` if the resolved node satisfies the schema, `false` otherwise.
+   */
+  satisfies<S>(schema: z.ZodType<S>, strict: boolean = false): this is AnvilAstNode<T & S, U> {
+
+    const slowCheck = () => schema.safeParse(this.resolve()).success;
+
+    if (strict) {
+      return slowCheck();
+    }
+
+    const fieldCheck = (fieldName: string): boolean | null => {
+      if (
+        !(schema instanceof z.ZodObject) ||
+        !(fieldName in schema.shape) ||
+        !(schema.shape.kind instanceof z.ZodType)
+      ) {
+        return null;
+      }
+
+      const zodKind = schema.shape.kind;
+      const inputKind = this.down(fieldName as keyof T).resolve();
+
+      if (!inputKind && !zodKind) {
+        return null;
+      }
+
+      const parseResult = zodKind?.safeParse(inputKind).success;
+      console.log(`Rapid schema check for node ${this} on field "${fieldName}" with input "${inputKind}" against schema ${zodKind} success: ${parseResult}`);
+      return !!parseResult;
+    }
+
+    const kind = fieldCheck("kind");
+    const type = fieldCheck("type");
+
+    if (kind === null) {
+      return slowCheck();
+    }
+
+    return kind && (type ?? true);
+  }
+
+  /**
+   * Returns the current node with an asserted type based on the provided Zod schema, if the schema check passes.
+   * Otherwise, returns null. This uses a rapid check pathway (based on the presence of a "kind" and/or "type" field)
+   * when possible.
+   */
+  satisfying<S>(schema: z.ZodType<S>): AnvilAstNode<T & S, U> | null {
+    return this.satisfies(schema) ? this : null;
+  }
+
+  /**
+   * Checks whether the current node has a "kind" field with the given value, without fully resolving the node's data.
+   */
+  satisfiesKind<S extends string>(kind: S): this is AnvilAstNode<T & { kind: S }, U> {
+    const kindNode = this.down("kind" as keyof T);
+    const resolvedKind = kindNode.resolve();
+    return resolvedKind === kind;
+  }
+
+  /**
+   * Returns the current node with an asserted type based on the presence of a "kind" field with the given value, if the check passes. Otherwise, returns null.
+   */
+  satisfyingKind<S extends string>(kind: S): AnvilAstNode<T & { kind: S }, U> | null {
+    return this.satisfiesKind(kind) ? this : null;
+  }
+
+  /**
+   * Checks whether the current node has a "type" field with the given value, without fully resolving the node's data.
+   */
+  satisfiesType<S extends string>(type: S): this is AnvilAstNode<T & { type: S }, U> {
+    const typeNode = this.down("type" as keyof T);
+    const resolvedType = typeNode.resolve();
+    return resolvedType === type;
+  }
+
+  /**
+   * Returns the current node with an asserted type based on the presence of a "type" field with the given value, if the check passes. Otherwise, returns null.
+   */
+  satisfyingType<S extends string>(type: S): AnvilAstNode<T & { type: S }, U> | null {
+    return this.satisfiesType(type) ? this : null;
+  }
+
+  /* -------------------------
    * Node Resolution
    * ------------------------- */
 
   /**
    * Resolves and returns the flattened node at current path.
    */
-  resolve(): unknown | null {
+  resolve(): unknown extends T ? (unknown | null) : (T | null) {
     if (this._path.length === 0) {
-      this._resolveCache = this._root ?? null;
+      this._resolveCache = this._root as T ?? null;
     }
 
     if (this._resolveCache !== undefined) {
@@ -355,14 +500,14 @@ export class AnvilAstNode {
       return null;
     }
 
-    return this._resolveCache;
+    return this._resolveCache ?? null;
   }
 
   /**
    * Resolves the node at current path and asserts it matches the provided schema.
    * Returns null if resolution fails or if the schema check fails.
    */
-  resolveAs<T>(schema: z.ZodType<T>): Readonly<T> | null {
+  resolveAs<U extends T>(schema: z.ZodType<U>): Readonly<U> | null {
     const resolved = this.resolve();
     if (resolved === null) {
       return null;
@@ -402,7 +547,11 @@ export class AnvilAstNode {
         procName = current.down("name").resolveAs(z.string()) ?? null;
         break;
       }
-      current = current.isRoot ? null : current.up();
+      if (current.isRoot()) {
+        current = null;
+      } else {
+        current = (current as AnvilAstNode).up();
+      }
     }
 
     if (!procName) {
@@ -418,8 +567,8 @@ export class AnvilAstNode {
    * for the event corresponding to this node, if applicable.
    */
   get event(): AnvilEventInfo | null {
-    const tid = this.traverse("event", "tid").resolveAs(z.number());
-    const eid = this.traverse("event", "eid").resolveAs(z.number());
+    const tid = this.unsafeTraverse("event", "tid").resolveAs(z.number());
+    const eid = this.unsafeTraverse("event", "eid").resolveAs(z.number());
 
     if (tid === null || eid === null) {
       return null;
@@ -438,8 +587,8 @@ export class AnvilAstNode {
    * This implies the node's execution spans until the occurrence of the target event (inclusive).
    */
   get sustainedTillEvent(): AnvilEventInfo | null {
-    const tid = this.traverse("event", "tid").resolveAs(z.number());
-    const toEid = this.traverse("event", "to_eid").resolveAs(z.number());
+    const tid = this.unsafeTraverse("event", "tid").resolveAs(z.number());
+    const toEid = this.unsafeTraverse("event", "to_eid").resolveAs(z.number());
 
     if (tid === null || toEid === null) {
       return null;
@@ -467,20 +616,20 @@ export class AnvilAstNode {
    * Obtains all names this node has. May return an empty list if none exists.
    */
   get names(): string[] {
-    let name = this.down("name").resolveAs(z.string());
+    let name = this.unsafeTraverse("name").resolveAs(z.string());
     if (name !== null) {
       return [name];
     }
 
-    let ids = this.down("ids").resolveAs(z.string().array());
+    let ids = this.unsafeTraverse("ids").resolveAs(z.string().array());
     if (ids !== null) {
       return [...ids];
     }
 
     switch (this.kind) {
       case "channel_def":
-        const left = this.down("endpoint_left").resolveAs(z.string());
-        const right = this.down("endpoint_right").resolveAs(z.string());
+        const left = this.unsafeTraverse("endpoint_left").resolveAs(z.string());
+        const right = this.unsafeTraverse("endpoint_right").resolveAs(z.string());
         return [left, right].filter((n): n is string => n !== null);
     }
 
@@ -492,7 +641,7 @@ export class AnvilAstNode {
    * Otherwise, returns null.
    */
   get span(): Readonly<AnvilSpan> | null {
-    return this.down("span").resolveAs(AnvilSpanSchema) ?? null;
+    return this.unsafeTraverse("span").resolveAs(AnvilSpanSchema) ?? null;
   }
 
 
@@ -500,14 +649,14 @@ export class AnvilAstNode {
    * Obtains the kind of this node, if applicable. Otherwise, returns null.
    */
   get kind(): string | null {
-    return this.down("kind").resolveAs(z.string()) ?? null;
+    return this.unsafeTraverse("kind").resolveAs(z.string()) ?? null;
   }
 
   /**
    * Obtains the type of this node, if applicable. Otherwise, returns null.
    */
   get type(): string | null {
-    return this.down("type").resolveAs(z.string()) ?? null;
+    return this.unsafeTraverse("type").resolveAs(z.string()) ?? null;
   }
 
   /**
@@ -540,7 +689,7 @@ export class AnvilAstNode {
    * if they exist. May return an empty list if no definitions exist.
    */
   get definitions(): AnvilAbsoluteSpan[] {
-    const defSpan = this.down("def_span").resolveAs(AnvilDefSpanSchema.array()) ?? [];
+    const defSpan = this.unsafeTraverse("def_span").resolveAs(AnvilDefSpanSchema.array()) ?? [];
     return defSpan.map((d) => new AnvilAbsoluteSpan(this._fsBasepath, d.file_name || this.filepath, d));
   }
 
@@ -557,7 +706,6 @@ export class AnvilAstNode {
 
 
 
-
 /**
  * AnvilAst is the top-level class representing every AST for every Anvil compilation unit.
  *
@@ -568,7 +716,7 @@ export class AnvilAst {
 
   public readonly initDate: Date = new Date();
 
-  private readonly roots: Map<string, AnvilAstNode> = new Map();
+  private readonly roots: Map<string, AnvilAstNode<AnvilCompUnit>> = new Map();
 
   /** filename -> sorted array of all locations in file */
   private readonly orderedLocations: Map<string, AnvilAbsoluteSpan[]> = new Map();
@@ -627,7 +775,7 @@ export class AnvilAst {
   /**
    * Returns the AnvilAstNode corresponding to the given absolute span location, if it exists in the AST.
    */
-  node(loc: AnvilAbsoluteSpan): AnvilAstNode | null {
+  node(loc: AnvilAbsoluteSpan): AnvilAstNode<unknown> | null {
     const root = this.roots.get(loc.fullpath);
     if (!root) {
       return null;
@@ -638,13 +786,13 @@ export class AnvilAst {
     if (!path) {
       return null;
     }
-    return root.traverse(...path);
+    return root.unsafeTraverse(...path);
   }
 
   /**
    * Returns the root AnvilAstNode for the given filename, if it exists in the AST.
    */
-  root(filename: string): AnvilAstNode | undefined {
+  root(filename: string): AnvilAstNode<AnvilCompUnit> | undefined {
     return this.roots.get(filename);
   }
 
@@ -662,21 +810,37 @@ export class AnvilAst {
    *
    * @returns An AnvilAstNode representing the closest AST node to the specified location
    */
-  closestNode(filename: string, line: number, col: number,
-              predicate?: (n: AnvilAstNode) => boolean): AnvilAstNode | null {
+  closestNode<U = unknown>(
+    filename: string, line: number, col: number,
+    predicate?: ((n: AnvilAstNode<unknown>) => boolean) | z.ZodType<U>
+  ): AnvilAstNode<U> | null {
+
+    const _predicate = predicate instanceof z.ZodType ?
+      (n: AnvilAstNode<unknown>) => {
+        if (n.satisfies(predicate)) {
+          console.log(`Node ${n} satisfies schema predicate ${predicate}`);
+          return true;
+        } else {
+          console.log(`Node ${n} does NOT satisfy schema predicate ${predicate}`);
+          return false;
+        }
+      } :
+      predicate;
+
     const closestLoc = this.findClosestAbsoluteSpan(
       filename, line, col,
-      predicate
+      _predicate
         ? (loc) => {
           const n = this.node(loc);
-          return !!n && predicate!(n);
+          console.log(`Checking node at ${loc} for predicate, resolved node: ${n}`);
+          return !!n && _predicate(n);
         }
         : undefined
     );
     if (!closestLoc) {
       return null;
     }
-    return this.node(closestLoc);
+    return this.node(closestLoc) as AnvilAstNode<U> | null;
   }
 
 
@@ -758,7 +922,7 @@ export class AnvilAst {
   /**
    * Returns all root AST nodes, each corresponding to a different compilation unit (file).
    */
-  getAllRoots(): Readonly<AnvilAstNode[]> {
+  getAllRoots(): Readonly<AnvilAstNode<AnvilCompUnit>[]> {
     return Array.from(this.roots.values());
   }
 
@@ -772,7 +936,7 @@ export class AnvilAst {
    * @param node The AnvilAstNode for which to extract the location.
    * @returns An AnvilAbsoluteSpan representing the source location of the node, or null if no location is available.
    */
-  findAbsoluteSpan(node: AnvilAstNode): AnvilAbsoluteSpan | null {
+  findAbsoluteSpan(node: AnvilAstNode<AnvilCompUnit>): AnvilAbsoluteSpan | null {
     return node.absoluteSpan;
   }
 
@@ -795,7 +959,7 @@ export class AnvilAst {
    *          that satisfies the predicate, or `null` if no such node is found.
    */
   findClosestAbsoluteSpan(filename: string, line: number, col: number,
-                      predicate?: (l: AnvilAbsoluteSpan) => boolean): AnvilAbsoluteSpan | null {
+                          predicate?: (l: AnvilAbsoluteSpan) => boolean): AnvilAbsoluteSpan | null {
     console.log(`Search: closest AST node in ${filename} to line ${line}, col ${col}`);
 
     const locations = this.orderedLocations.get(filename);

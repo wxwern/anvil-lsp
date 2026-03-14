@@ -482,7 +482,7 @@ connection.onCompletionResolve(async (item: CompletionItem) => {
 
 		const doc = documentAnvilManagers.get(fileUri);
 		if (doc) {
-			const node = doc.anvilAst?.root(filepath)?.traverse(...nodepathResolved);
+			const node = doc.anvilAst?.root(filepath)?.unsafeTraverse(...nodepathResolved);
 			if (node) {
 				const defDesc = AnvilDescriptionGenerator.describeNode(node, doc, getAnvilDocumentForNode, {
 					code: true,

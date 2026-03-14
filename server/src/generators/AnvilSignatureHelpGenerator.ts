@@ -3,6 +3,7 @@ import { AnvilAstNode } from "../core/ast/AnvilAst";
 import { AnvilDocument } from "../core/AnvilDocument";
 import { AnvilDescriptionGenerator } from "./AnvilDescriptionGenerator";
 import { AnvilCompletionGenerator } from "./AnvilCompletionGenerator";
+import { AnvilChannelClassSchema, AnvilProcDefBodyNativeSchema, AnvilProcSchema, AnvilType } from "../core/ast/schema";
 
 export class AnvilSignatureHelpGenerator {
 
@@ -153,7 +154,7 @@ export class AnvilSignatureHelpGenerator {
     // Find the proc_def by name across all roots.
     let procNode: AnvilAstNode | null = null;
     for (const root of ast.getAllRoots()) {
-      const found = root.traverse('procs').children.find(p => p.name === procBaseName);
+      const found = root.down('procs').children.find(p => p.name === procBaseName);
       if (found) { procNode = found; break; }
     }
 
@@ -217,7 +218,7 @@ export class AnvilSignatureHelpGenerator {
     // Find the func_def by name across all roots.
     let funcNode: AnvilAstNode | null = null;
     for (const root of ast.getAllRoots()) {
-      const found = root.traverse('func_defs').children.find(f => f.name === funcName);
+      const found = root.down('func_defs').children.find(f => f.name === funcName);
       if (found) { funcNode = found; break; }
     }
 
@@ -281,7 +282,7 @@ export class AnvilSignatureHelpGenerator {
     // Resolve the endpoint — could be a proc arg or a local channel_def endpoint.
     const procNode = ast.closestNode(
       document.filepath, position.line, position.character,
-      n => n.kind === 'proc_def',
+      AnvilProcSchema
     );
 
     if (!procNode) {
@@ -289,8 +290,16 @@ export class AnvilSignatureHelpGenerator {
       return null;
     }
 
-    const procArgs = procNode.down('args').children;
-    const channels  = procNode.traverse('body', 'channels').children;
+    const procArgs = procNode
+      .down('args')
+      .children;
+
+    const channels = procNode
+      .down('body')
+      .satisfying(AnvilProcDefBodyNativeSchema)
+      ?.down('channels')
+      .children
+      ?? [];
 
     const endpointNode: AnvilAstNode | undefined =
       procArgs.find(e => e.name === endpointName) ??
@@ -304,7 +313,8 @@ export class AnvilSignatureHelpGenerator {
     // Resolve the channel class definition.
     const channelClassDef = endpointNode.definitions
       .map(d => ast.node(d))
-      .find(n => n?.kind === 'channel_class_def');
+      .map(n => n?.satisfying(AnvilChannelClassSchema))
+      .find(c => !!c);
 
     if (!channelClassDef) {
       console.log('[SignatureHelp] send: channel class def not found.');
@@ -322,7 +332,7 @@ export class AnvilSignatureHelpGenerator {
 
     const dir = isOut ? 'out' : 'in';
 
-    const messages = channelClassDef.traverse('messages').children;
+    const messages = channelClassDef.down('messages').children;
     const messageNode = messages.find(
       m => m.down('dir').resolve() === dir && m.name === messageName,
     );
@@ -379,11 +389,16 @@ export class AnvilSignatureHelpGenerator {
     if (!ast) return null;
 
     // Find the type_def of record kind.
-    let typeDef: AnvilAstNode | null = null;
+    let typeDef: AnvilAstNode<AnvilType> | null = null;
     for (const root of ast.getAllRoots()) {
-      const found = root.traverse('type_defs').children.find(
-        td => td.name === typeName && td.traverse('data_type', 'type').resolve() === 'record',
-      );
+      const found = root
+        .down('type_defs')
+        .children
+        .find(td =>
+          td.name === typeName &&
+          td.down('data_type').type === 'record',
+        );
+
       if (found) { typeDef = found; break; }
     }
 
@@ -392,7 +407,12 @@ export class AnvilSignatureHelpGenerator {
       return null;
     }
 
-    const fields = typeDef.traverse('data_type', 'elements').children;
+    const fields = typeDef
+      .down('data_type')
+      .satisfyingType('record')
+      ?.down('elements')
+      .children
+      ?? [];
 
     const parameters: ParameterInformation[] = fields.map(f => {
       const label = AnvilDescriptionGenerator.getNodeDefinitionStr(f, document, getSupplementaryDoc).trim()

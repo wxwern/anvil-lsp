@@ -2,6 +2,8 @@ import { CompletionItem, CompletionItemKind, InsertTextFormat, Position} from "v
 import { AnvilAstNode, AnvilAstNodePath } from "../core/ast/AnvilAst";
 import { AnvilDocument } from "../core/AnvilDocument";
 import { AnvilServerSettings } from "../utils/AnvilServerSettings";
+import { AnvilChannelClassSchema, AnvilProcSchema, AnvilTypeSchema } from "../core/ast/schema";
+import z from "zod";
 
 export class AnvilCompletionDetail {
   constructor(
@@ -159,10 +161,13 @@ export class AnvilCompletionGenerator {
     // Locate registers in the closest proc scope, and filter by prefix.
     const regs = ast.closestNode(
       document.filepath, position.line, position.character,
-      n => n.kind === 'proc_def'
-    )?.traverse("body", "regs").children;
-
-    if (!regs) return null;
+      AnvilProcSchema
+    )
+      ?.down("body")
+      .satisfyingType("native")
+      ?.down("regs")
+      .children
+      ?? [];
 
     const matchingRegs = regs.filter(r => r.name?.startsWith(regPartialNamePrefix));
 
@@ -200,8 +205,13 @@ export class AnvilCompletionGenerator {
     // Locate registers in the closest proc scope, and filter by prefix.
     const regs = ast.closestNode(
       document.filepath, position.line, position.character,
-      n => n.kind === 'proc_def'
-    )?.traverse("body", "regs").children;
+      AnvilProcSchema
+    )
+      ?.down("body")
+      .satisfyingType("native")
+      ?.down("regs")
+      .children
+      ?? [];
 
     if (!regs) return null;
 
@@ -251,16 +261,22 @@ export class AnvilCompletionGenerator {
     // Locate endpoints in the closest proc scope, and filter by prefix.
     const endpoints = ast.closestNode(
       document.filepath, position.line, position.character,
-      n => n.kind === 'proc_def'
-    )?.traverse("args").children;
+      AnvilProcSchema
+    )
+      ?.down("args")
+      .children;
 
     const matchingEndpoints = endpoints?.filter(e => e.name?.startsWith(endpointPartialNamePrefix)) || [];
 
     // Attempt: channel_def search
     const channels = ast.closestNode(
       document.filepath, position.line, position.character,
-      n => n.kind === 'proc_def'
-    )?.traverse("body", "channels").children
+      AnvilProcSchema
+    )
+      ?.down("body")
+      .satisfyingType("native")
+      ?.down("channels")
+      .children;
 
     const matchingChannels = channels
       ?.filter(c => c.names.find(n => n.startsWith(endpointPartialNamePrefix)))
@@ -288,8 +304,8 @@ export class AnvilCompletionGenerator {
     for (const endpointCandidate of endpointCandidates) {
       const channelClassDef = endpointCandidate
         .definitions
-        .map(d => ast.node(d))
-        .find(n => n?.kind === 'channel_class_def');
+        .map(d => ast.node(d)?.satisfying(AnvilChannelClassSchema))
+        .find(c => !!c);
 
       if (!channelClassDef) continue;
 
@@ -304,7 +320,7 @@ export class AnvilCompletionGenerator {
 
       const dir = isOut ? "out" : "in";
 
-      const messages = channelClassDef.traverse("messages").children;
+      const messages = channelClassDef.down("messages").children;
       const matchingMessages = messages
         .filter(m => m.down("dir").resolve() === dir)
         .filter(m => m.name?.startsWith(messagePartialNamePrefix));
@@ -369,8 +385,8 @@ export class AnvilCompletionGenerator {
 
     const messageDefs = ast.closestNode(
       document.filepath, position.line, position.character,
-      n => n.kind === 'channel_class_def'
-    )?.traverse("messages").children
+      AnvilChannelClassSchema
+    )?.down("messages").children
     .filter(n => n.kind === 'message_def')
     .filter(n => n.name !== identifier) || [];
 
@@ -547,7 +563,7 @@ export class AnvilCompletionGenerator {
     const typeDef = typeDefs[0];
 
     // Get the parameter list for the type def, and filter by prefix.
-    const params = typeDef.traverse("data_type", "params").children;
+    const params = typeDef.down("data_type").down("params").children;
     const matchingParams = params.map(p => p.name).filter(n => !!n);
 
     console.log(`Found ${matchingParams.length} typedef parameter candidates for prefix "${paramPartialPrefix}"`);
@@ -689,7 +705,9 @@ export class AnvilCompletionGenerator {
     const typeDefs = this.getAllNodes(
       position, document,
       { filter: n => !!(n.kind === "type_def" && n.name === typeName) }
-    ).filter(n => n.kind === 'type_def');
+    )
+    .map(n => n.satisfying(AnvilTypeSchema))
+    .filter(n => !!n);
 
     if (typeDefs.length === 0) {
       console.log(`No type definitions found for type name "${typeName}"`);
@@ -697,10 +715,10 @@ export class AnvilCompletionGenerator {
     }
 
     for (const typeDef of typeDefs) {
-      switch (typeDef.traverse("data_type", "type").resolve()) {
+      switch (typeDef.down("data_type").down("type").resolve()) {
         case 'record': {
           // struct-like type, look for fields
-          const fields = typeDef.traverse("data_type", "elements").children;
+          const fields = typeDef.down("data_type").down("elements").children;
           const fieldNames = fields.flatMap(f => f.name).map(n => n || '').filter(n => n);
 
           // completion syntax is typename::{name1 = $1, name2 = $2, ...}
@@ -725,7 +743,7 @@ export class AnvilCompletionGenerator {
         }
         case 'variant': {
           // enum-like type, look for variants
-          const variants = typeDef.traverse("data_type", "elements").children;
+          const variants = typeDef.down("data_type").down("elements").children;
           const matchingVariants = variants
             .filter(v => v.name)
             .filter(v => ('::' + v.name).startsWith(memberPartialPrefix));
@@ -756,45 +774,50 @@ export class AnvilCompletionGenerator {
 
 
 
-  private static getAllNodes(
+  private static getAllNodes<T = any, S = any>(
     position: Position, document: AnvilDocument,
     options?: {
-      scoped?: boolean | string,
-      filter?: (node: AnvilAstNode) => boolean,
+      scoped?: z.ZodType<S>,
+      filter?: ((node: AnvilAstNode) => boolean) | z.ZodType<T>,
       relnodepath?: AnvilAstNodePath
     }
-  ): AnvilAstNode[] {
+  ): AnvilAstNode<T>[] {
 
     const ast = document.anvilAst;
     const filter = options?.filter ?? (() => true);
     const scoped = options?.scoped ?? false;
-    const scopeCond = typeof scoped === 'string'
-      ? (n: AnvilAstNode) => n.kind === scoped
-      : (n: AnvilAstNode) => true;
     const relnodepath = options?.relnodepath;
 
     if (!ast) return [];
 
-
-    let nodeList: AnvilAstNode[] =  relnodepath
-    ? (
-      scoped
-      ? Array.of(...(
-          ast.closestNode(document.filepath, position.line, position.character, scopeCond) ?? ast.root(document.filepath)
-        )?.traverse(...relnodepath).children ?? [])
-      : ast.getAllRoots().flatMap(n => n.traverse(...relnodepath).children)
-    )
-    : (
-      scoped
-      ? Array.of(...(
-          ast.closestNode(document.filepath, position.line, position.character, scopeCond) ?? ast.root(document.filepath)
-        )?.getAllDescendants() ?? [])
-
-      : ast.getAllLocatableNodes().map(l => ast.node(l)).filter(n => !!n)
+    let nodeList: AnvilAstNode<unknown>[] = (
+      relnodepath ?
+        (
+          scoped ?
+            Array.of(...(
+              ast.closestNode(document.filepath, position.line, position.character, scoped)
+                ?? ast.root(document.filepath)
+            )?.unsafeTraverse(...relnodepath).children ?? []) :
+            ast.getAllRoots().flatMap(n => n.unsafeTraverse(...relnodepath).children)
+        ) as unknown[] as AnvilAstNode<unknown>[] :
+        (
+          scoped ?
+            Array.of(...(
+              ast.closestNode(document.filepath, position.line, position.character, scoped)
+                ?? ast.root(document.filepath)
+            )?.getAllDescendants() ?? []) :
+            ast.getAllLocatableNodes().map(l => ast.node(l)).filter(n => !!n)
+        )
     );
 
 
-    return nodeList.filter(filter);
+    if (filter instanceof z.ZodType) {
+      nodeList = nodeList.filter(n => n.satisfies(filter));
+    } else {
+      nodeList = nodeList.filter(n => filter(n));
+    }
+
+    return nodeList as AnvilAstNode<T>[];
   }
 
   private static getAllEntries(nodes: AnvilAstNode[]) {

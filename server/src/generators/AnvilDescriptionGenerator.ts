@@ -129,7 +129,7 @@ export class AnvilDescriptionGenerator {
     }
 
     public static getNodeDefinitionStr(
-        node: AnvilAstNode,
+        node: AnvilAstNode<any>,
         anvilDocument: AnvilDocument,
         supplementaryDocuments?: (f: AnvilAstNode) => AnvilDocument | null,
         options?: { expanded?: boolean | "auto" }
@@ -187,7 +187,7 @@ export class AnvilDescriptionGenerator {
                 switch (kind) {
                     case "unop":
                     case "binop": {
-                        operOnly = `/* ${node.traverse("op").resolveAs(z.string()) || ""} */`;
+                        operOnly = `/* ${node.down("op").resolveAs(z.string()) || ""} */`;
                         break;
                     }
                     case "wait": {
