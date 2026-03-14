@@ -97,6 +97,10 @@ export class AnvilAstNode {
     this._path = path;
     this._eventIdCycleDelayLookup = {};
 
+    if (!this._root.file_name) {
+      throw new Error("Root compilation unit must have a file_name");
+    }
+
     for (const graph of root.event_graphs ?? []) {
       const procName = graph.proc_name;
       if (!this._eventIdCycleDelayLookup[procName]) {
@@ -142,7 +146,7 @@ export class AnvilAstNode {
    * The file path of the compilation unit this node belongs to, relative to the base path.
    */
   get filepath(): string {
-    return this.resolveRoot().file_name;
+    return this.resolveRoot().file_name!; // Root node must have file_name, guaranteed by constructor
   }
 
   /**
@@ -600,13 +604,18 @@ export class AnvilAst {
 
       const rootNode = AnvilAstNode.of(fsBasepath, unit);
 
-      this.roots.set(unit.file_name, rootNode);
-      this.orderedLocations.set(unit.file_name, []);
+      const filename = unit.file_name;
+      if (!filename) {
+        throw new Error("Compilation unit is missing a file_name: " + JSON.stringify(unit));
+      }
 
-      const mappedCount = this.deepMapNode(rootNode.resolve(), fsBasepath, unit.file_name, []);
+      this.roots.set(filename, rootNode);
+      this.orderedLocations.set(filename, []);
+
+      const mappedCount = this.deepMapNode(rootNode.resolve(), fsBasepath, filename, []);
       console.log(`Processed and mapped ${mappedCount} nodes for file ${unit.file_name}`);
 
-      this.sortLocations(unit.file_name);
+      this.sortLocations(filename);
     }
   }
 

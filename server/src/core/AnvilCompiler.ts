@@ -35,23 +35,15 @@
 import * as path from 'path';
 import { spawn } from 'child_process';
 import { AnvilAst } from './ast/AnvilAst';
-import { AnvilCompUnit, AnvilSpan } from './ast/schema';
-
-/**
- * JSON position structure from anvil compiler
- */
-interface AnvilJsonPosition {
-    line: number;
-    col: number;
-}
+import { AnvilCompUnit, AnvilSpan, AnvilPosition } from './ast/schema';
 
 /**
  * JSON trace structure from anvil compiler
  */
 
 interface AnvilJsonTrace {
-    start: AnvilJsonPosition;
-    end: AnvilJsonPosition;
+    start: AnvilPosition;
+    end: AnvilPosition;
 }
 
 type AnvilJsonFragment =
