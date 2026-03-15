@@ -1,0 +1,599 @@
+{
+  "_comment": "Lookup table from AST node kind/type to useful information. Keys are 'kind' alone when the kind is sufficient to identify the token, or 'kind/type' when the type sub-discriminator is also needed. Use the pattern (node.type ? `${node.kind}/${node.type}` : node.kind) for O(1) lookup.",
+
+  "kind": {
+
+    "compilation_unit": {
+      "name": "file",
+      "description": "The root of an Anvil source file. A compilation unit contains all top-level declarations in a `.anvil` file: processes, channel classes, type definitions, functions, constants, and imports.",
+      "internal": true
+    },
+
+    "import_directive": {
+      "name": "import",
+      "description": "An import directive. This pulls all top-level definitions from another Anvil file (or a SystemVerilog file when prefixed with `extern`) into the current compilation unit.",
+      "examples": "```anvil\nimport \"path/to/file.anvil\"\nextern import \"path/to/module.sv\"\n```"
+    },
+
+    "proc_def": {
+      "name": "process",
+      "description": "A process definition, declaring a hardware module.\n\nProcesses communicate through channel endpoints and contain registers, spawned sub-processes, and concurrent threads.",
+      "examples": "```anvil\nproc Name(ep : left ChannelClass) {\n    reg r : logic[8];\n    loop { /* ... */ }\n}\n```"
+    },
+
+    "func_def": {
+      "name": "function",
+      "description": "A function definition, declaring an expression-level macro.\n\nCalling a function inlines the body at the call site - functions do not produce hardware modules.",
+      "examples": "```anvil\nfunc add(a : logic[8], b : logic[8]) { a + b }\n```"
+    },
+
+    "macro_def": {
+      "name": "constant",
+      "description": "A constant (macro) definition, binding an integer identifier to a compile-time integer value.\n\nConstants can be used wherever an integer literal is expected, such as array sizes.",
+      "examples": "```anvil\nconst WIDTH = 8;\n```"
+    },
+
+    "type_def": {
+      "name": "type",
+      "description": "A type alias definition, binding a name to a data type, optionally parameterised.",
+      "examples": "```anvil\ntype Byte = logic[8];\ntype Pair<T : type> = (T, T);\n```"
+    },
+
+    "type_element_def": {
+      "name": "type element",
+      "description": "A definition of a struct or enum field.",
+      "examples": "```anvil\nstruct Coord {\n    x : logic[8],\n    y : logic[8]\n}\nenum Color {\n    Red,\n    Green,\n    Blue\n}\n```"
+    },
+
+    "channel_class_def": {
+      "name": "channel class",
+      "description": "A channel class definition, describing a communication contract between two process endpoints.\n\nIt declares a set of named messages, each with a direction (`left`/`right`), payload type, lifetime, and synchronisation mode.",
+      "examples": "```anvil\nchan Bus {\n    left req : (logic[8]@#1),\n    right resp : (logic[8]@req)\n}\n```"
+    },
+
+    "message_def": {
+      "name": "message",
+      "description": "A message definition inside a channel class, specifying one communication event. It declares:\n - the direction (`left`/`right`)\n - the payload data type\n - the message lifetime, and \n - optional synchronisation modes for each side.\n\nThe direction marks the side a message is sent to. Thus, a `left` message is sent by senders on the `right` to recipients on the `left`, and vice versa.",
+      "examples": "```anvil\nleft req : (logic[8]@#1) @dyn - @dyn\n```"
+    },
+
+    "channel_def": {
+      "name": "channel",
+      "description": "A channel instantiation inside a process body.\n\nThis creates a channel instance and binds names to its two endpoints, the implied `left` and `right` sides respectively.",
+      "examples": "```anvil\nchan le -- ri : BusClass;\nchan le -- ri : BusClass[4];  // array of 4 channels\n```"
+    },
+
+    "endpoint_def": {
+      "name": "endpoint",
+      "description": "An endpoint definition, naming one side of a channel connection for a process.\n\nIt appears in a process argument list or as the result of a `chan` creation inside a process body, and carries the channel class, direction (`left`/`right`), and optional `foreign` tag.\n\nThe direction marks the side this process plays for this channel, so a `left` endpoint definition implies this process is receives incoming `left` messages, and sends outgoing `right` messages (and vice versa).",
+      "examples": "```anvil\nproc P(ep : left BusClass) { /* ... */ }\n```"
+    },
+
+    "reg_def": {
+      "name": "register",
+      "description": "A register declaration, creating a persistent hardware state inside a process.\n\nRegisters are initialized to zero on reset. They are read with `*r` and written with `set r := expr`.",
+      "examples": "```anvil\nreg counter : logic[8];\n```"
+    },
+
+    "sig_def": {
+      "name": "signal",
+      "description": "A signal definition, describing a named value with a specific data type and lifetime contract."
+    },
+
+    "spawn_def": {
+      "name": "spawn",
+      "description": "A spawn statement, instantiating a child process inside a parent process body, passing channel endpoints as arguments.",
+      "examples": "```anvil\nspawn Worker(le);\nspawn Worker<4, logic[8]>(le);\n```"
+    },
+
+    "shared_var_def": {
+      "name": "shared variable",
+      "description": "A shared variable declaration, creating a value that is written by one designated thread and read by others. The `assigned by` clause names the thread index responsible for writing it.",
+      "examples": "```anvil\nshared(#1) result assigned by 0;\n```"
+    },
+
+    "param": {
+      "name": "parameter",
+      "description": "A compile-time parameter on a process, channel class, or type. Parameters come in two kinds: `n : int` (integer constant) and `T : type` (type). They are resolved at compile time and can be used as array sizes or type arguments.",
+      "examples": "```anvil\nproc P<N : int, T : type>(ep : left Ch<T>) { /* ... */ }\n```"
+    },
+
+    "param_value": {
+      "name": "parameter value",
+      "description": "A concrete value supplied for a compile-time parameter at the point of instantiation. Parameter values are either integer literals or data types.",
+      "examples": "```anvil\nspawn P<4, logic[8]>(ep);\n```"
+    },
+
+    "param_value/int": {
+      "name": "int parameter value",
+      "description": "An integer compile-time parameter value, supplied as a numeric literal at the instantiation site (e.g., `spawn P<4>(ep)`)."
+    },
+
+    "param_value/type": {
+      "name": "type parameter value",
+      "description": "A data-type compile-time parameter value, supplied as a type expression at the instantiation site (e.g., `spawn P<logic[8]>(ep)`)."
+    },
+
+    "typed_arg": {
+      "name": "argument",
+      "description": "A named argument of a function definition, optionally carrying a type annotation.",
+      "examples": "```anvil\nfunc f(x : logic[8], y) { x + y }\n```"
+    },
+
+    "message_specifier": {
+      "name": "message specifier",
+      "description": "A message specifier refers to a specific message on a specific endpoint, written as `endpoint.messageName` or `endpoint[i].messageName` for indexed endpoints.",
+      "examples": "```anvil\nsend ep.req (data)\nrecv ep.resp\n```"
+    },
+
+    "data_type": {
+      "name": "type",
+      "description": "A data type node describes the shape of a value in the Anvil type system. The `type` field further discriminates the specific form (logic, array, tuple, record, variant, etc.)."
+    },
+
+    "data_type/logic": {
+      "name": "logic",
+      "description": "The primitive logic type. `logic` represents a single bit; `logic[N]` represents an N-bit logic array. This is the fundamental hardware value type in Anvil.",
+      "examples": "```anvil\nreg flag : logic;\nreg data : logic[8];\n```"
+    },
+
+    "data_type/array": {
+      "name": "array type",
+      "description": "An array data type holding `N` elements of a base type. Multidimensional arrays are expressed as `dtype[N][M]`.",
+      "examples": "```anvil\nreg buf : logic[8][4];  // array of 4 bytes\n```"
+    },
+
+    "data_type/tuple": {
+      "name": "tuple type",
+      "description": "A tuple type grouping a fixed number of heterogeneous values. The empty tuple `()` is the unit type (also spelled `void` in message signatures).",
+      "examples": "```anvil\ntype Pair = (logic[8], logic[8]);\n```"
+    },
+
+    "data_type/record": {
+      "name": "struct",
+      "description": "A struct (record) data type with named fields. Structs are defined with the `struct` keyword and constructed with `Name::{ field = expr; ... }` syntax.",
+      "examples": "```anvil\nstruct Coord { x : logic[8], y : logic[8] }\n```"
+    },
+
+    "data_type/variant": {
+      "name": "enum",
+      "description": "An enum data type whose value is exactly one of a set of named constructors. Enums are defined with the `enum` keyword and constructed with `Name::VariantName` syntax.",
+      "examples": "```anvil\nenum Color { Red, Green, Blue }\n```"
+    },
+
+    "data_type/opaque": {
+      "name": "type parameter",
+      "description": "An opaque (unresolved) type. This references a name that is a type parameter rather than a concrete type."
+    },
+
+    "data_type/named": {
+      "name": "named type",
+      "description": "A reference to a named type (alias, struct, or enum), optionally supplied with compile-time parameters.",
+      "examples": "```anvil\nreg s : MyStruct;\nreg p : Pair<logic[4]>;\n```"
+    },
+
+    "literal": {
+      "name": "literal",
+      "description": "A numeric literal. It may be binary, decimal, hexadecimal, or an unsized integer."
+    },
+
+    "literal/binary": {
+      "name": "binary literal",
+      "description": "A sized binary numeric literal of the form `N'b<digits>`, representing the bit-width `N` and binary (base-2) digits of the value.",
+      "examples": "```anvil\n4'b1010\n1'b0\n```"
+    },
+
+    "literal/decimal": {
+      "name": "decimal literal",
+      "description": "A sized decimal numeric literal of the form `N'd<digits>`, representing the bit-width `N` and decimal (base-10) digits of the value.",
+      "examples": "```anvil\n8'd42\n16'd1000\n```"
+    },
+
+    "literal/hex": {
+      "name": "hex literal",
+      "description": "A sized hexadecimal numeric literal of the form `N'h<digits>`, representing the bit-width `N` and hexadecimal (base-16) digits of the value.",
+      "examples": "```anvil\n16'hFF00\n8'hAB\n```"
+    },
+
+    "literal/with_length": {
+      "name": "sized literal",
+      "description": "A numeric literal with an explicit bit width. Its bit-width and value are resolved to a plain integer."
+    },
+
+    "literal/no_length": {
+      "name": "unsized literal",
+      "description": "A numeric literal with no explicit bit width. The width is inferred from context. Used in contexts such as array sizes and constant expressions.",
+      "examples": "```anvil\nconst N = 8;\nreg r : logic[8];  // the '8' here\n```"
+    },
+
+    "expr": {
+      "name": "expression",
+      "description": "An expression node."
+    },
+
+    "expr/literal": {
+      "name": "literal",
+      "description": "A literal value expression. They are fixed values explicitly denoted in source, such as `8'd42`, `4'b1010`, or `16'hFF00`."
+    },
+
+    "expr/identifier": {
+      "name": "identifier",
+      "description": "A reference to a name bound by a `let` binding, process argument, or process-level declaration (register, endpoint, etc.)."
+    },
+
+    "expr/Call": {
+      "name": "function call",
+      "description": "A function call expression. It inlines the body of a `func` definition at the call site.",
+      "examples": "```anvil\ncall add(x, y)\n```"
+    },
+
+    "expr/assign": {
+      "name": "register write",
+      "description": "A register write expression. Writes a value to a register or one of its fields/indices.\n\nThe write takes effect in the **next** clock cycle; the expression evaluates to `void` delayed by one cycle.",
+      "examples": "```anvil\nset r := expr\nset r.field := expr\nset r[i] := expr\n```"
+    },
+
+    "expr/binop": {
+      "name": "binary operator",
+      "description": "A binary operator.",
+      "examples": "```anvil\na + b\na == b\na && b\na in {x, y, z}\n```"
+    },
+
+    "expr/unop": {
+      "name": "unary operator",
+      "description": "A unary operator.",
+      "examples": "```anvil\n~mask\n-value\n&bus\n```"
+    },
+
+    "expr/tuple": {
+      "name": "tuple",
+      "description": "A tuple construction expression, grouping multiple values. The empty tuple `()` is the unit value.",
+      "examples": "```anvil\n(a, b)\n()\n```"
+    },
+
+    "expr/let": {
+      "name": "let binding",
+      "description": "A `let` binding, which introduces a name for an expression's result. The continuation of this expression may use the name.\n\n`let x = e1` starts `e1` concurrently with the continuation; `let x = e1 >> e2` waits for `e1` before `e2`.",
+      "examples": "```anvil\nlet x = recv ep.req >> send ep.resp(x + 1'd1)\n```"
+    },
+
+    "expr/join": {
+      "name": "join",
+      "description": "The join (parallel) operator `;`. Starts expressions on both sides simultaneously.\n\nEvaluates to the result of the right-hand side when both complete.",
+      "examples": "```anvil\ne1; e2\n```"
+    },
+
+    "expr/wait": {
+      "name": "wait",
+      "description": "The wait (sequencing) operator `>>`. Waits for the left-hand expression to complete, then starts the right-hand expression.\n\nEvaluates to the result of the right side.",
+      "examples": "```anvil\nrecv ep.req >> send ep.resp(1'd1)\n```"
+    },
+
+    "expr/cycle": {
+      "name": "cycle delay",
+      "description": "A `cycle N` expression. Delays execution for exactly `N` clock cycles.\n\nEvaluates to `void` after the delay.",
+      "examples": "```anvil\ncycle 3\n```"
+    },
+
+    "expr/sync": {
+      "name": "sync",
+      "description": "A `sync` expression. Synchronises on a shared variable, waiting until the variable has been assigned by its designated thread.",
+      "examples": "```anvil\nsync result\n```"
+    },
+
+    "expr/if_expr": {
+      "name": "if expression",
+      "description": "A conditional expression. The condition must be fully evaluated before the chosen branch begins.\n\nA falsy condition is all-zero bits; truthy is any other value.\n\nThe else branch defaults to evaluating to `void` if omitted.",
+      "examples": "```anvil\nif cond { send ep.a(1'b1) } else { send ep.b(1'b0) }\n```"
+    },
+
+    "expr/try_recv": {
+      "name": "try recv",
+      "description": "A message receive attempt. If the message is immediately available per timing contracts, binds the received value to a name and evaluates the success branch; otherwise evaluates the failure branch.",
+      "examples": "```anvil\ntry x = recv ep.msg { use(x) } else { fallback }\n```"
+    },
+
+    "expr/try_send": {
+      "name": "try send",
+      "description": "A message send attempt. If the receiver is immediately ready per timing contracts, sends the value and evaluates the success branch; otherwise evaluates the failure branch.",
+      "examples": "```anvil\ntry send ep.msg (val) { success } else { fallback }\n```"
+    },
+
+    "expr/construct": {
+      "name": "enum constructor",
+      "description": "An enum variant construction expression. Creates a value of an enum type by naming the enum and the variant.",
+      "examples": "```anvil\nColor::Red\nOption::Some(8'd42)\n```"
+    },
+
+    "expr/record": {
+      "name": "struct literal",
+      "description": "A struct (record) construction expression. Creates a value of a struct type by providing all field values, or updates an existing value with the `with` syntax.",
+      "examples": "```anvil\nCoord::{ x = 8'd0; y = 8'd1 }\nCoord::{ base with x = 8'd5 }\n```"
+    },
+
+    "expr/index": {
+      "name": "index",
+      "description": "An indexing expression. Accesses a single element (`e[i]`) or a contiguous range (`e[lo+:sz]`) of an array or logic value.",
+      "examples": "```anvil\nbuf[0]\ndata[4+:4]  // bits 4..7\n```"
+    },
+
+    "expr/indirect": {
+      "name": "field access",
+      "description": "A field access expression (`.`). Reads a named field of a struct value.",
+      "examples": "```anvil\ncoord.x\npacket.header.flags\n```"
+    },
+
+    "expr/concat": {
+      "name": "concatenation",
+      "description": "A bit-concatenation expression. Packs multiple values together; the first operand occupies the high bits. The `flat` variant (`#flat{...}`) flattens nested arrays.",
+      "examples": "```anvil\n#{ high, low }       // high bits first\n#flat{ a, b, c }\n```"
+    },
+
+    "expr/cast": {
+      "name": "cast",
+      "description": "A type cast expression. Reinterprets an expression as a different data type.",
+      "examples": "```anvil\n<( value ):: logic[16]>\n```"
+    },
+
+    "expr/ready": {
+      "name": "ready",
+      "description": "A `ready` check for messages. Tests whether a message on an endpoint is available to receive, returning a logic value without blocking.",
+      "examples": "```anvil\nready ep.msg\n```"
+    },
+
+    "expr/probe": {
+      "name": "probe",
+      "description": "A `probe` expression. Inspects the state of a message on an endpoint.",
+      "examples": "```anvil\nprobe ep.msg\n```"
+    },
+
+    "expr/match": {
+      "name": "match expression",
+      "description": "A pattern-matching expression that dispatches on an enum value. Each arm binds a pattern; the `_` wildcard arm is mandatory.",
+      "examples": "```anvil\nmatch color {\n    Color::Red   => 8'hFF,\n    Color::Green => 8'h00,\n    _            => 8'h0F\n}\n```"
+    },
+
+    "expr/read": {
+      "name": "register read",
+      "description": "A register read expression. Reads the current value of a register. The value is valid until the next write to that register.",
+      "examples": "```anvil\n*counter\n*buf[i]\n*state.field\n```"
+    },
+
+    "expr/debug": {
+      "name": "debug operation",
+      "description": "A debug operation (`dprint` or `dfinish`). Simulation-only - this has no effect on synthesised hardware."
+    },
+
+    "expr/send": {
+      "name": "send",
+      "description": "A send expression. Sends the given value to the recipient, following the timing contracts for this message.\n\nAttempting a send outside of such agreements results in compile-time errors.",
+      "examples": "```anvil\nsend ep.req (8'd42)\n```"
+    },
+
+    "expr/recv": {
+      "name": "recv",
+      "description": "A receive expression. Receives the value from the sender, following the timing contracts for this message.\n\nAttempting to receive outside of such agreements results in compile-time errors.",
+      "examples": "```anvil\nrecv ep.resp\n```"
+    },
+
+    "expr/shared_assign": {
+      "name": "shared assign",
+      "description": "A shared variable assignment (`put`). Makes a new value available for a shared variable, signalling to other threads that synchronise on it.",
+      "examples": "```anvil\nput result := computed_value\n```"
+    },
+
+    "expr/list": {
+      "name": "array literal",
+      "description": "An array literal expression. Constructs a homogeneous sequence of values.",
+      "examples": "```anvil\n[8'd1, 8'd2, 8'd3]\n```"
+    },
+
+    "expr/recurse": {
+      "name": "recurse",
+      "description": "A `recurse` expression. This restarts the enclosing `recursive` thread from the beginning. It can appear at any point in the thread body, enabling flexible pipelining and loop control.",
+      "examples": "```anvil\nrecursive {\n    let x = recv ep.req >>\n    send ep.resp (x) >>\n    recurse\n}\n```"
+    },
+
+    "lvalue": {
+      "name": "lvalue",
+      "description": "An lvalue. A writable target for register write (`set`) or field/index update. Lvalues name registers and allow chained field and index access."
+    },
+
+    "lvalue/reg": {
+      "name": "register lvalue",
+      "description": "A simple register name as a write target.",
+      "examples": "```anvil\nset r := expr\n```"
+    },
+
+    "lvalue/indexed": {
+      "name": "indexed lvalue",
+      "description": "An indexed element of an array register as a write target.",
+      "examples": "```anvil\nset buf[i] := expr\n```"
+    },
+
+    "lvalue/indirected": {
+      "name": "field lvalue",
+      "description": "A named field of a struct register as a write target.",
+      "examples": "```anvil\nset state.field := expr\n```"
+    },
+
+    "index": {
+      "name": "index",
+      "description": "An index expression for array access or lvalue indexing."
+    },
+
+    "index/single": {
+      "name": "single index",
+      "description": "A single-element index `e[i]`."
+    },
+
+    "index/range": {
+      "name": "range index",
+      "description": "A range index `e[lo+:sz]` selecting `sz` elements starting at position `lo`."
+    },
+
+    "debug_op": {
+      "name": "debug op",
+      "description": "A debug operation node. Debug operations are simulation-only and do not affect synthesised hardware."
+    },
+
+    "debug_op/debug_print": {
+      "name": "dprint",
+      "description": "A `dprint` operation. Prints a formatted string during simulation (does not affect synthesised hardware). Supports printf-style format specifiers.",
+      "examples": "```anvil\ndprint \"value = %d\" (x)\n```"
+    },
+
+    "debug_op/debug_finish": {
+      "name": "dfinish",
+      "description": "A `dfinish` operation. Terminates the simulation (does not affect synthesised hardware).",
+      "examples": "```anvil\ndfinish\n```"
+    },
+
+    "thread": {
+      "name": "thread",
+      "description": "A concurrent execution thread inside a process. Process threads are either `loop` (restarts automatically) or `recursive` (restart is explicit via `recurse`). All threads in a process run concurrently."
+    },
+
+    "send_pack": {
+      "name": "send",
+      "description": "A send packet pairing a message specifier with the expression to be transmitted."
+    },
+
+    "recv_pack": {
+      "name": "recv",
+      "description": "A receive packet naming the message specifier to receive from."
+    },
+
+    "constructor_spec": {
+      "name": "enum constructor",
+      "description": "An enum constructor specification naming the enum type and the variant being constructed."
+    },
+
+    "sig_type": {
+      "name": "signal type",
+      "description": "A signal type pairing a data type with a lifetime annotation. Used in channel message definitions to describe what kind of value is transmitted and for how long it remains valid."
+    },
+
+    "sig_lifetime": {
+      "name": "lifetime",
+      "description": "A lifetime annotation on a signal, describing the time window during which the communicated value is guaranteed to be valid."
+    },
+
+    "delay_pat": {
+      "name": "lifetime pattern",
+      "description": "A delay pattern specifying the ending point of a value's lifetime. Can be a fixed number of cycles, relative to another message, or eternal."
+    },
+
+    "delay_pat/cycles": {
+      "name": "cycle lifetime",
+      "description": "A lifetime of exactly `N` cycles.",
+      "examples": "```anvil\n@#3 // valid for 3 cycles\n```"
+    },
+
+    "delay_pat/message": {
+      "name": "message-relative lifetime",
+      "description": "A lifetime tied to the lifetime of another message, optionally offset by `N` cycles.",
+      "examples": "```anvil\n@req\n@req+1\n@req-2\n```"
+    },
+
+    "delay_pat/eternal": {
+      "name": "eternal lifetime",
+      "description": "A lifetime that never expires - the value is always valid.",
+      "examples": "```anvil\n@eternal\n```"
+    },
+
+    "args_spawn": {
+      "name": "spawn argument",
+      "description": "An argument passed to a `spawn` statement, referring to an endpoint by name or by indexed range.",
+      "examples": "```anvil\nspawn P(ep);\nspawn P(eps[0+:4]);\n```"
+    },
+
+    "args_spawn/single": {
+      "name": "endpoint argument",
+      "description": "A single endpoint passed by name to a spawned process."
+    },
+
+    "args_spawn/indexed": {
+      "name": "indexed endpoint argument",
+      "description": "An endpoint range passed to a spawned process by index or range.",
+      "examples": "```anvil\nspawn P(eps[0+:4]);\n```"
+    },
+
+    "array_dimensions": {
+      "name": "array dimensions",
+      "description": "The dimension specification of an array type or channel array. Can be one-dimensional (`dtype[N]`) or multi-dimensional (`dtype[N][M]`)."
+    },
+
+    "array_dimensions/one": {
+      "name": "1D array",
+      "description": "A single-dimensional array size specification."
+    },
+
+    "array_dimensions/multi": {
+      "name": "multi-dim array",
+      "description": "A multi-dimensional array size specification."
+    },
+
+    "singleton_or_list": {
+      "name": "value or list",
+      "description": "An internal AST node that holds either a single value or a list of values. Used in binary operator expressions where the right-hand side may be a set of values (e.g. `in {a, b, c}`).",
+      "internal": true
+    },
+
+    "singleton_or_list/single": {
+      "name": "single value",
+      "description": "A single-value variant of a `singleton_or_list` node.",
+      "internal": true
+    },
+
+    "singleton_or_list/list": {
+      "name": "list",
+      "description": "A multi-value variant of a `singleton_or_list` node, e.g. the set in `e in {a, b, c}`.",
+      "internal": true
+    },
+
+    "proc_def_body": {
+      "name": "process body",
+      "description": "The body of a process definition, containing its channels, registers, spawned sub-processes, shared variables, and concurrent threads."
+    },
+
+    "proc_def_body/native": {
+      "name": "native process body",
+      "description": "The body of a native Anvil process, written in Anvil source."
+    },
+
+    "proc_def_body/extern": {
+      "name": "external process body",
+      "description": "The body of an `extern` process wrapping a SystemVerilog module. Maps Anvil channel messages to SystemVerilog port signals.",
+      "examples": "```anvil\nproc P(ep : left Ch) extern(\"sv_mod\") {\n    clk_i(\"clk\");\n    rst_ni(\"rst_n\");\n    ep.msg(\"data\" : \"valid\" : \"ack\");\n}\n```"
+    },
+
+    "cycle_proc": {
+      "name": "cycle process",
+      "description": "An internal compiled representation of a process as a clocked state machine - a transition function paired with its signal definitions.",
+      "internal": true
+    },
+
+    "message_sync_mode": {
+      "name": "sync mode",
+      "description": "The synchronisation mode of a channel message, controlling when sends and receives may occur."
+    },
+
+    "message_sync_mode/dynamic": {
+      "name": "dynamic sync",
+      "description": "**Dynamic synchronisation** (`@dyn`): handshake-based, using valid/acknowledge signals. The sender and receiver may interact at any time."
+    },
+
+    "message_sync_mode/static": {
+      "name": "static sync",
+      "description": "**Static synchronisation** (`@#I~N`): the message is available every `N` cycles, with an optional fixed initial offset of `I` cycles (if omitted, defaults to an offset of `N`).",
+      "examples": "```anvil\n@#2     // every 2nd cycle\n@#0~4   // every 4 cycles, starting at cycle 0\n```"
+    },
+
+    "message_sync_mode/dependent": {
+      "name": "dependent sync",
+      "description": "**Dependent synchronisation** (`@#msg+N`): the message is available relative to another named message by an offset of `N` cycles (if omitted, defaults to no offset).",
+      "examples": "```anvil\n@#req\n@#req+1\n```"
+    }
+  }
+}

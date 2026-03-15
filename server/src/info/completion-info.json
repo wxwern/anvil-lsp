@@ -1,0 +1,449 @@
+{
+  "_comment": "Lookup tables for AnvilCompletionGenerator.",
+
+  "kind": {
+    "_comment": "Keyed by the AST node kind string.",
+
+    "expr": {
+      "hint": "",
+      "lspKind": "Variable"
+    },
+    "expr/let": {
+      "hint": "let",
+      "lspKind": "Variable"
+    },
+    "reg_def": {
+      "hint": "register",
+      "lspKind": "Variable"
+    },
+    "channel_class_def": {
+      "hint": "channel",
+      "lspKind": "Class"
+    },
+    "type_def": {
+      "hint": "type",
+      "lspKind": "Type"
+    },
+    "type_element_def": {
+      "hint": "field",
+      "lspKind": "Type"
+    },
+    "func_def": {
+      "hint": "function",
+      "lspKind": "Function"
+    },
+    "proc_def": {
+      "hint": "process",
+      "lspKind": "Module"
+    },
+    "macro_def": {
+      "hint": "macro",
+      "lspKind": "Constant"
+    },
+    "endpoint_def": {
+      "hint": "endpoint",
+      "lspKind": "Interface"
+    },
+    "message_def": {
+      "hint": "message",
+      "lspKind": "Method"
+    },
+    "data_type/record": {
+      "hint": "struct",
+      "lspKind": "Struct"
+    },
+    "data_type/variant": {
+      "hint": "enum",
+      "lspKind": "Enum"
+    }
+  },
+
+  "builtInKeywordCompletions": {
+    "_comment": "The built-in keyword table.",
+
+    "left": {
+      "category": "modifier",
+      "hint": "modifier",
+      "lspKind": "Keyword",
+      "astKind": ["endpoint_def", "message_def"],
+      "description": "Declares that an endpoint or message direction is `left`.\n\n- In a channel class, `left` messages are sent by the left endpoint.\n- In a process argument, `left` names the role this process plays on the channel.",
+      "scope": ["()", "channel_class_def"]
+    },
+    "right": {
+      "category": "modifier",
+      "hint": "modifier",
+      "lspKind": "Keyword",
+      "astKind": ["endpoint_def", "message_def"],
+      "description": "Declares that an endpoint or message direction is `right`.\n\n- In a channel class, `right` messages are sent by the right endpoint.\n- In a process argument, `right` names the role this process plays on the channel.",
+      "scope": ["()", "channel_class_def"]
+    },
+    "extern": {
+      "category": "modifier",
+      "hint": "modifier",
+      "lspKind": "Keyword",
+      "astKind": ["import_directive", "proc_def_body/extern"],
+      "scope": [null, "){"]
+    },
+    "shared": {
+      "category": "modifier",
+      "hint": "modifier",
+      "lspKind": "Keyword",
+      "astKind": "shared_var_def"
+    },
+    "assigned by": {
+      "category": "modifier",
+      "hint": "modifier",
+      "lspKind": "Keyword",
+      "astKind": "shared_var_def",
+      "description": "Part of a `shared` variable declaration; names the thread index (zero-based) that is responsible for writing the shared variable.\n\n**Example:**\n\n```anvil\nshared(#1) result assigned by 0;\n```"
+    },
+    "import": {
+      "category": "modifier",
+      "hint": "modifier",
+      "lspKind": "Keyword",
+      "astKind": "import_directive"
+    },
+
+    "generate": {
+      "category": "modifier",
+      "hint": "modifier",
+      "lspKind": "Keyword",
+      "description": "Compile-time parallel loop unrolling. Instantiates the body expression once for each value of the loop variable, with all instances running concurrently (joined with `;`).\n\n**Example:**\n\n```anvil\ngenerate (i : 0, 3, 1) {\n    send eps[i].req(data[i])\n}\n```"
+    },
+
+    "generate_seq": {
+      "category": "modifier",
+      "hint": "modifier",
+      "lspKind": "Keyword",
+      "description": "Compile-time sequential loop unrolling. Instantiates the body expression once for each value of the loop variable, with all instances chained sequentially (with `>>`).\n\n**Example:**\n\n```anvil\ngenerate_seq (i : 0, 3, 1) {\n    send ep.req(data[i])\n}\n```"
+    },
+
+    "logic": {
+      "category": "type",
+      "hint": "type",
+      "lspKind": "Keyword",
+      "description": "The primitive hardware bit type. `logic` is a single bit; `logic[N]` is an N-bit vector. This is the fundamental value type for hardware signals in Anvil.\n\n**Example:**\n\n```anvil\nreg flag  : logic;\nreg data  : logic[8];\nreg bus   : logic[32];\n```"
+    },
+
+    "int": {
+      "category": "param_type",
+      "hint": "type",
+      "lspKind": "Keyword",
+      "description": "The kind keyword for an integer compile-time parameter. Used in parameter lists to declare a parameter that takes an integer value.\n\n**Example:**\n\n```anvil\nproc P<N : int>(ep : left Ch) { ... }\ntype Vec<N : int> = logic[N];\n```",
+      "scope": "<>"
+    },
+
+    "type": {
+      "category": ["declaration", "param_type"],
+      "hint": ["declaration", "type"],
+      "lspKind": "Keyword",
+      "astKind": ["type_def", null ],
+      "description": [
+        null,
+        "The kind keyword for a type parameter. Used in parameter lists to declare a parameter that takes a type value.\n\n**Example:**\n\n```anvil\nproc P<T : type>(ep : left Ch) { ... }\ntype Vec<T : type, N : int> = T[N];\n```"
+      ],
+      "scope": [null, "<>"]
+    },
+
+    "void": {
+      "category": "unit_type",
+      "hint": "type",
+      "lspKind": "Keyword",
+      "astKind": "data_type/tuple",
+      "description": "The unit type. Also expressed as an empty tuple `()`."
+    },
+
+    "struct": {
+      "category": "declaration",
+      "hint": "declaration",
+      "lspKind": "Keyword",
+      "astKind": "data_type/record"
+    },
+    "enum": {
+      "category": "declaration",
+      "hint": "declaration",
+      "lspKind": "Keyword",
+      "astKind": "data_type/variant"
+    },
+    "proc": {
+      "category": "declaration",
+      "hint": "declaration",
+      "lspKind": "Keyword",
+      "astKind": "proc_def"
+    },
+    "spawn": {
+      "category": "declaration",
+      "hint": "declaration",
+      "lspKind": "Keyword",
+      "astKind": "spawn_def"
+    },
+    "func": {
+      "category": "declaration",
+      "hint": "declaration",
+      "lspKind": "Keyword",
+      "astKind": "func_def"
+    },
+    "const": {
+      "category": "declaration",
+      "hint": "declaration",
+      "lspKind": "Keyword",
+      "astKind": "macro_def"
+    },
+    "reg": {
+      "category": "declaration",
+      "hint": "declaration",
+      "lspKind": "Keyword",
+      "astKind": "reg_def"
+    },
+    "chan": {
+      "category": "declaration",
+      "hint": "declaration",
+      "lspKind": "Keyword",
+      "astKind": ["channel_class_def", "channel_def"],
+      "scope": [null, "proc_def"]
+    },
+    "call": {
+      "category": "control",
+      "hint": "control",
+      "lspKind": "Keyword",
+      "astKind": "expr/Call"
+    },
+    "loop": {
+      "category": "control",
+      "hint": "control",
+      "lspKind": "Keyword",
+      "astKind": "thread",
+      "description": "Starts an infinite loop thread inside a process. The body expression is repeated indefinitely; the loop restarts as soon as the body completes. An optional message specifier causes the loop to restart on that message.\n\n**Example:**\n\n```anvil\nloop {\n    let x = recv ep.req >>\n    send ep.resp(x)\n}\n\nloop ep.rst { /* restarts when ep.rst arrives */ }\n```"
+    },
+    "recursive": {
+      "category": "control",
+      "hint": "control",
+      "lspKind": "Keyword",
+      "astKind": "thread",
+      "description": "Starts a recursive thread inside a process. Unlike `loop`, the restart point is explicit - the `recurse` expression causes the thread to restart from the beginning. This allows pipelining and conditional restart.\n\n**Example:**\n\n```anvil\nrecursive {\n    let x = recv ep.req >>\n    send ep.resp(x) >>\n    recurse\n}\n```"
+    },
+    "if": {
+      "category": "control",
+      "hint": "control",
+      "lspKind": "Keyword",
+      "astKind": "expr/if_expr"
+    },
+    "else": {
+      "category": "control",
+      "hint": "control",
+      "lspKind": "Keyword",
+      "description": "The else branch of an `if` expression or `try` expression, evaluated when the condition is false or the non-blocking operation is not immediately ready."
+    },
+    "try": {
+      "category": "control",
+      "hint": "control",
+      "lspKind": "Keyword",
+      "astKind": ["expr/try_recv", "expr/try_send"],
+      "description": "A non-blocking send or receive attempt. If the operation can proceed immediately, the success branch is taken; otherwise the `else` branch is taken.\n\n**Example:**\n\n```anvil\ntry x = recv ep.msg { use(x) } else { fallback }\ntry send ep.msg(val) { success } else { fallback }\n```"
+    },
+    "try recv": {
+      "category": "control",
+      "hint": "control",
+      "lspKind": "Keyword",
+      "astKind": "expr/try_recv",
+      "snippet": "try $1 = recv $2"
+    },
+    "try send": {
+      "category": "control",
+      "hint": "control",
+      "lspKind": "Keyword",
+      "astKind": "expr/try_send",
+      "snippet": "try send $1"
+    },
+    "recurse": {
+      "category": "control",
+      "hint": "control",
+      "lspKind": "Keyword",
+      "astKind": "expr/recurse"
+    },
+    "recv": {
+      "category": "control",
+      "hint": "control",
+      "lspKind": "Keyword",
+      "astKind": "expr/recv"
+    },
+    "send": {
+      "category": "control",
+      "hint": "control",
+      "lspKind": "Keyword",
+      "astKind": "expr/send"
+    },
+    "dprint": {
+      "category": "control",
+      "hint": "control",
+      "lspKind": "Keyword",
+      "astKind": "debug_op/debug_print"
+    },
+    "dfinish": {
+      "category": "control",
+      "hint": "control",
+      "lspKind": "Keyword",
+      "astKind": "debug_op/debug_finish"
+    },
+    "set": {
+      "category": "control",
+      "hint": "control",
+      "lspKind": "Keyword",
+      "astKind": "expr/assign"
+    },
+    "cycle": {
+      "category": "control",
+      "hint": "control",
+      "lspKind": "Keyword",
+      "astKind": "expr/cycle"
+    },
+    "sync": {
+      "category": "control",
+      "hint": "control",
+      "lspKind": "Keyword",
+      "astKind": "expr/sync"
+    },
+    "match": {
+      "category": "control",
+      "hint": "control",
+      "lspKind": "Keyword",
+      "astKind": "expr/match"
+    },
+    "put": {
+      "category": "control",
+      "hint": "control",
+      "lspKind": "Keyword",
+      "astKind": "expr/shared_assign"
+    },
+    "ready": {
+      "category": "control",
+      "hint": "control",
+      "lspKind": "Keyword",
+      "astKind": "expr/ready"
+    },
+    "in": {
+      "category": "control",
+      "hint": "control",
+      "lspKind": "Keyword",
+      "astKind": "expr/binop",
+      "description": "Set-membership test. Returns a truthy value if the left operand equals any element in the right-hand set literal.\n\n**Example:**\n\n```anvil\nif state in {State::Idle, State::Done} { /* ... */ }\n```"
+    },
+    "probe": {
+      "category": "control",
+      "hint": "control",
+      "lspKind": "Keyword",
+      "astKind": "expr/probe"
+    },
+
+    "with": {
+      "category": "misc",
+      "hint": "misc",
+      "lspKind": "Keyword",
+      "astKind": "expr/record",
+      "description": "Struct update syntax. Creates a copy of an existing struct value with one or more fields overridden.\n\n**Example:**\n\n```anvil\nCoord::{ base with x = 8'd5 }\n```"
+    },
+
+    "let": {
+      "category": "binding",
+      "hint": "binding",
+      "lspKind": "Keyword",
+      "astKind": "expr/let"
+    },
+
+    ">>": {
+      "category": "operator",
+      "hint": "wait",
+      "lspKind": "Operator",
+      "astKind": "expr/wait"
+    },
+
+    ";": {
+      "category": "operator",
+      "hint": "join",
+      "lspKind": "Operator",
+      "astKind": "expr/join"
+    }
+  },
+
+  "timingCompletions": {
+
+    "_comment": "Fixed completion entries for the timing annotation heuristic context (inside a channel class message definition after '@'). Split into two sub-sections: 'lifetime' entries appear after the first '@' inside the payload parentheses, and 'sync' entries appear after the closing ')' when adding a sync-mode annotation.",
+
+    "_substitutionPatterns": {
+      "%s": {
+        "kind": "message_def",
+        "path": ["name"]
+      }
+    },
+
+    "lifetime": {
+      "#N": {
+        "hint": "fixed lifetime",
+        "insertText": "#$1)$0",
+        "lspKind": "TypeParameter",
+        "astKind": "delay_pat/cycles",
+        "description": "**Fixed lifetime**: The message is available for `N` cycles when sent/received."
+      },
+      "%s": {
+        "hint": "relative lifetime",
+        "insertText": "%s$1)$0",
+        "lspKind": "TypeParameter",
+        "astKind": "delay_pat/message",
+        "description": "**Relative lifetime**: The message is available for the same number of cycles as `%s`."
+      },
+      "%s+N": {
+        "hint": "relative lifetime",
+        "insertText": "%s+$1)$0",
+        "lspKind": "TypeParameter",
+        "astKind": "delay_pat/message",
+        "description": "**Relative lifetime**: The message is available for the duration of the lifetime of `%s`, offset by `N` cycles."
+      },
+      "eternal": {
+        "hint": "eternal lifetime",
+        "insertText": "eternal)$0",
+        "lspKind": "TypeParameter",
+        "astKind": "delay_pat/eternal",
+        "description": "**Eternal lifetime**: The message is available indefinitely when sent/received."
+      }
+    },
+
+    "sync": {
+      "#N": {
+        "hint": "fixed sync",
+        "insertText": "#$0",
+        "lspKind": "TypeParameter",
+        "astKind": "message_sync_mode/static",
+        "description": "**Static synchronization**: The message is sent/received every `N` cycles (beginning on cycle `N`).\n\n**Example:**\n\n```anvil\n@#2 // every 2nd cycle\n    // (i.e., 2nd, 4th, 6th, ...)\n```"
+      },
+      "#I~N": {
+        "hint": "fixed sync",
+        "insertText": "#$1~$0",
+        "lspKind": "TypeParameter",
+        "astKind": "message_sync_mode/static",
+        "description": "**Static synchronization**: The message is sent/received every `N` cycles (beginning on cycle `I`).\n\n**Example:**\n\n```anvil\n@#1~3 // every 3rd cycle, beginning cycle 1\n      // (i.e., 1st, 4th, 7th, ...)\n```"
+      },
+      "dyn": {
+        "hint": "dynamic sync",
+        "insertText": "dyn",
+        "lspKind": "TypeParameter",
+        "astKind": "message_sync_mode/dynamic",
+        "description": "**Dynamic synchronization**: The sender and receiver synchronize on messages via handshaking signals."
+      },
+      "#%s": {
+        "hint": "relative sync",
+        "insertText": "#%s",
+        "lspKind": "TypeParameter",
+        "astKind": "message_sync_mode/dependent",
+        "description": "**Dependent synchronization**: The message is sent/received at the same time as the referenced message `%s`."
+      },
+      "#%s+N": {
+        "hint": "relative sync",
+        "insertText": "#%s+$0",
+        "lspKind": "TypeParameter",
+        "astKind": "message_sync_mode/dependent",
+        "description": "**Dependent synchronization**: The message is sent/received `N` cycles after the referenced message `%s`."
+      }
+    }
+
+  }
+}
