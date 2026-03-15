@@ -17,52 +17,31 @@ To install a supported version of Anvil, view the [Anvil installation instructio
 ## Feature Support
 
 - [x] Inline Diagnostics
-    - [x] Compile Errors
-    - [ ] Compile Warnings
+    - Compile Errors
+    - Compile Warnings^
 - [x] Hover Information
-    - [x] Type info
-    - [x] Definition info
-    - [ ] Lifetime info
-    - [ ] Documentation (from source doc comments)
-    - [x] Built-in syntax descriptions
+    - Type info
+    - Definition info
+    - Anvil syntax help
 - [x] Go to Definition
-- [x] Go to Type Definition
-- [x] Find All References
+- [x] Go to Type Definition^
+- [x] Find All References*
+    - *Only works within the same file at the moment.
 - [x] Signature Help
-    - [x] Spawn process arguments (`spawn <proc>(<args>)`)
-    - [x] Endpoint message send arguments (`send <endpoint>.<message>(<args>)`)
-    - [x] Record init field values (`Rec::{<field> = <value>; ... }`)
-    - [x] Function call arguments (`call <identifier>(<args>)`)
-    - [ ] ... TBA
 - [x] Autocompletion
-    - [x] Anvil keywords
-    - [x] Document symbols
-    - [x] Context-aware suggestions
-        - [x] Function call suggestions (`call <identifier>(<args>)`)
-        - [x] Endpoint message send/receive (`send`/`recv`) syntax
-        - [x] Register read (`*`) syntax
-        - [x] Register assign (`set`) syntax
-        - [ ] Record init (`Rec::{field =`) syntax
-        - [ ] Record read (`.field`) syntax
-        - [x] Enum value syntax (`Enum::value`) syntax
-        - [x] Type annotation syntax (`<identifier> : <type>`)
-        - [x] Lifetime annotation syntax (`chan { <left/right> ... : <lifetime> }`)
-        - [ ] Datatype-matched parameter values
-        - ... TBA
-    - [x] Snippets
-        - [x] Automatic delimiter insertion
-        - [x] Function call snippet (`call <identifier>(<args>)`)
-        - [x] Spawn process snippet (`spawn <proc>(<args>)`)
-        - [x] Record init snippet (`Rec::{<field> = <value>; ... }`)
-        - ... TBA
+    - Anvil keywords
+    - Document symbols
+    - Context-aware suggestions
+    - Snippets
 - [x] Inlay Hints
-    - [x] Timing Information
-        - [x] Events
-        - [x] Clock Cycle Hints
-        - [x] Lifetime Hints
+    - Timing Information^
+        - Clock Cycle Hints^
+        - Lifetime Hints^
 - [ ] Rename/Refactor symbol
 
-(Checkboxes indicate implemented features)
+For details, see the [LSP feature support documentation](LSP.md).
+
+^Compiler support is incomplete and may not be available or accurate.
 
 **Warning:** Both the Anvil Compiler AST output and Language Server implementations are currently experimental.
 They may have bugs and the AST API are subject to breaking changes. Use with caution.
