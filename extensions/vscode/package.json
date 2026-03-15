@@ -57,6 +57,53 @@
           "default": true,
           "description": "Controls whether inlay hints denoting event timings are shown in the editor."
         },
+        "anvil.showSyntaxHelp": {
+          "scope": "window",
+          "default": { "onHover": true, "onAutocomplete": "anvilKeywords", "includeExamples": false },
+          "description": "Controls whether explanations of Anvil syntax are shown in hover tooltips and autocomplete popups.",
+          "oneOf": [
+            {
+              "type": "boolean",
+              "description": "`true` enables all explanations in all areas. `false` disables all explanations."
+            },
+            {
+              "type": "object",
+              "description": "Fine-grained control over where Anvil concept explanations appear.",
+              "properties": {
+                "onHover": {
+                  "type": "boolean",
+                  "default": true,
+                  "description": "Show Anvil explanations when hovering over nodes."
+                },
+                "onAutocomplete": {
+                  "default": "anvilKeywords",
+                  "description": "Show Anvil explanations in autocomplete documentation popups.",
+                  "oneOf": [
+                    {
+                      "type": "string",
+                      "enum": ["none", "anvilKeywords", "all"],
+                      "enumDescriptions": [
+                        "Never show explanations in autocomplete popups.",
+                        "Show explanations only for built-in Anvil keywords and operators.",
+                        "Show explanations for all completions, including user-defined identifiers."
+                      ]
+                    },
+                    {
+                      "type": "boolean",
+                      "description": "`true` is equivalent to `\"all\"`. `false` is equivalent to `\"none\"`."
+                    }
+                  ]
+                },
+                "includeExamples": {
+                  "type": "boolean",
+                  "default": false,
+                  "description": "When `true`, code examples from the Anvil language reference are included in syntax help explanations. Only applies when syntax explanations are active."
+                }
+              },
+              "additionalProperties": false
+            }
+          ]
+        },
         "anvil.trace.server": {
           "scope": "window",
           "type": "string",

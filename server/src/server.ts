@@ -20,7 +20,7 @@ import { TextDocument } from 'vscode-languageserver-textdocument';
 import { TextDocumentConnection } from 'vscode-languageserver/lib/common/textDocuments';
 
 import { AnvilLspUtils } from './utils/AnvilLspUtils';
-import { AnvilServerSettings, DEFAULT_ANVIL_SERVER_SETTINGS } from './utils/AnvilServerSettings';
+import { AnvilServerSettings, DEFAULT_ANVIL_SERVER_SETTINGS, resolveShowSyntaxHelp } from './utils/AnvilServerSettings';
 import { AnvilDocument } from './core/AnvilDocument';
 import { LazyMap } from './utils/LazyMap';
 import { AnvilDescriptionGenerator } from './generators/AnvilDescriptionGenerator';
@@ -288,6 +288,7 @@ connection.onHover(async (params) => {
 
 	const settings = await documentSettings.get(document.uri);
 	const D = !!settings.debug;
+	const showSyntaxHelp = resolveShowSyntaxHelp(settings.showSyntaxHelp);
 
 	const anvilDocument = documentAnvilManagers.get(document.uri);
 	if (!anvilDocument) return !D ? null : {
@@ -332,7 +333,8 @@ connection.onHover(async (params) => {
 				code: true,
 				documentation: true,
 				definitions: true,
-				explanations: true,
+				explanations: showSyntaxHelp.onHover,
+				examples: showSyntaxHelp.includeExamples,
 				debug: D,
 			})
 		}
@@ -469,11 +471,26 @@ connection.onCompletionResolve(async (item: CompletionItem) => {
 	const filepath = item.data?.filepath;
 	const nodepath = item.data?.nodepath;
 	const plainDesc = item.data?.desc || '';
+	const source: 'builtinKeyword' | 'astNode' | undefined = item.data?.source;
 
-	if (plainDesc && typeof plainDesc === 'string') {
+	// Fetch settings for the currently active document if possible; fall back to globals.
+	// (CompletionResolve has no document URI, so we use the most-recently-resolved settings.)
+	const resolvedSettings = globalSettings;
+	const showSyntaxHelp = resolveShowSyntaxHelp(resolvedSettings.showSyntaxHelp);
+
+	// Whether to include the explanation (desc / explanations segment) for this item.
+	const includeExplanation = (() => {
+		switch (showSyntaxHelp.onAutocomplete) {
+			case 'none':          return false;
+			case 'anvilKeywords': return source === 'builtinKeyword';
+			case 'all':           return true;
+		}
+	})();
+
+	if (plainDesc && typeof plainDesc === 'string' && !filepath) {
 		item.documentation = {
 			kind: 'markdown',
-			value: plainDesc
+			value: includeExplanation ? plainDesc : ''
 		};
 		return item;
 	}
@@ -489,11 +506,12 @@ connection.onCompletionResolve(async (item: CompletionItem) => {
 					code: true,
 					documentation: true,
 					definitions: true,
-					explanations: true,
+					explanations: includeExplanation,
+					examples: showSyntaxHelp.includeExamples,
 				}) || '';
 
 				let descs = [];
-				if (plainDesc) descs.push(plainDesc);
+				if (plainDesc && includeExplanation) descs.push(plainDesc);
 				if (defDesc) descs.push(defDesc);
 
 				item.documentation = {

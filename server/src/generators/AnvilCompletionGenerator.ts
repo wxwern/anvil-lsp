@@ -2,7 +2,6 @@ import z from "zod";
 import { CompletionItem, CompletionItemKind, InsertTextFormat, Position} from "vscode-languageserver";
 import { AnvilAstNode, AnvilAstNodePath } from "../core/ast/AnvilAst";
 import { AnvilDocument } from "../core/AnvilDocument";
-import { AnvilServerSettings } from "../utils/AnvilServerSettings";
 import { AnvilChannelClassSchema, AnvilProcSchema, AnvilTypeSchema } from "../core/ast/schema";
 import { completionInfo } from "../info/parsed";
 
@@ -13,10 +12,12 @@ export class AnvilCompletionDetail {
     public lspKind: CompletionItemKind,
     public hint: string,
     private documentation: { node?: AnvilAstNode, desc?: string } = {},
+    /** Whether this item originates from the built-in keyword/operator table. */
+    public readonly source: 'builtinKeyword' | 'astNode' = 'astNode',
   ) { }
 
-  public static create(label: string, insertText: string, lspKind: CompletionItemKind, hint: string, documentation?: { node?: AnvilAstNode, desc?: string }) {
-    return new AnvilCompletionDetail(label, insertText, lspKind, `(${hint})`, documentation);
+  public static create(label: string, insertText: string, lspKind: CompletionItemKind, hint: string, documentation?: { node?: AnvilAstNode, desc?: string }, source: 'builtinKeyword' | 'astNode' = 'astNode') {
+    return new AnvilCompletionDetail(label, insertText, lspKind, `(${hint})`, documentation, source);
   }
 
   public static fromKeyword(keyword: string, category?: string | null, scopePrefixData?: string): AnvilCompletionDetail[] {
@@ -34,7 +35,7 @@ export class AnvilCompletionDetail {
       const scope = variant.scope;
       // TODO: Check scope
 
-      list.push(AnvilCompletionDetail.create(label, insertText, lspKind, hint, { desc: desc ?? undefined }));
+      list.push(AnvilCompletionDetail.create(label, insertText, lspKind, hint, { desc: desc ?? undefined }, 'builtinKeyword'));
     }
     return list;
   }
@@ -48,7 +49,7 @@ export class AnvilCompletionDetail {
 
     const lspKind = (CompletionItemKind as any)[entry?.lspKind ?? 'Text'] ?? CompletionItemKind.Text;
     const hint = entry?.hint ?? '';
-    return AnvilCompletionDetail.create(label, insertText, lspKind, hint, { node });
+    return AnvilCompletionDetail.create(label, insertText, lspKind, hint, { node }, 'astNode');
   }
 
   public static basicFromNode(insertText: string, node: AnvilAstNode): AnvilCompletionDetail {
@@ -59,7 +60,7 @@ export class AnvilCompletionDetail {
     return this.insertText != this.label;
   }
 
-  public lspCompletionItem(options?: { allowOOOSnippet?: boolean, settings?: AnvilServerSettings }): CompletionItem {
+  public lspCompletionItem(options?: { allowOOOSnippet?: boolean }): CompletionItem {
     const outOfOrder = options?.allowOOOSnippet ?? false;
     let insertText = this.insertText;
 
@@ -76,7 +77,9 @@ export class AnvilCompletionDetail {
     return {
       label: this.label,
       kind: this.lspKind,
-      data: "node" in d ? { filepath: d.node?.filepath, nodepath: d.node?.nodepath, desc: d.desc } : d,
+      data: "node" in d
+        ? { filepath: d.node?.filepath, nodepath: d.node?.nodepath, desc: d.desc, source: this.source }
+        : { ...d, source: this.source },
       detail: this.hint,
       insertText: insertText,
       insertTextFormat: this.isSnippet ? InsertTextFormat.Snippet : InsertTextFormat.PlainText,
@@ -93,6 +96,7 @@ export class AnvilCompletionDetail {
       } : undefined
     };
   }
+
 }
 
 export class AnvilCompletionGenerator {
@@ -449,7 +453,8 @@ export class AnvilCompletionGenerator {
               hashReformat(insertText),
               lspKind,
               entry.hint,
-              { node: msgDef, desc: description ?? undefined }
+              { node: msgDef, desc: description ?? undefined },
+              'builtinKeyword'
             ));
           }
         } else {
@@ -458,7 +463,8 @@ export class AnvilCompletionGenerator {
             hashReformat(entry.insertText),
             lspKind,
             entry.hint,
-            { desc: entry.description ?? undefined }
+            { desc: entry.description ?? undefined },
+            'builtinKeyword'
           ));
         }
       }
@@ -507,7 +513,8 @@ export class AnvilCompletionGenerator {
               finalInsert,
               lspKind,
               entry.hint,
-              { node: msgDef, desc: description ?? undefined }
+              { node: msgDef, desc: description ?? undefined },
+              'builtinKeyword'
             ));
           }
         } else {
@@ -526,7 +533,8 @@ export class AnvilCompletionGenerator {
             finalInsert,
             lspKind,
             entry.hint,
-            { desc: entry.description ?? undefined }
+            { desc: entry.description ?? undefined },
+            'builtinKeyword'
           ));
         }
       }

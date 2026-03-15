@@ -306,6 +306,8 @@ export class AnvilDescriptionGenerator {
             definitions?: boolean;
             /** Explanations of the node */
             explanations?: boolean;
+            /** Code examples from ast-node-info.json. Only shown when explanations is also true. */
+            examples?: boolean;
             /** Internal debug information (path, kind, span, raw JSON). */
             debug?: boolean;
         }
@@ -360,7 +362,11 @@ export class AnvilDescriptionGenerator {
                 const hasAbove = !!(documentationSegment || codeSegment || definitionsSegment);
                 const sep = hasAbove ? "\n\n---\n\n" : "";
 
-                explanationSegment = sep + "**Information:**\n\n" + entry.description + "\n";
+                explanationSegment = sep + "**Anvil Info:**\n\n" + entry.description + "\n";
+
+                if (segments?.examples && entry.examples) {
+                    explanationSegment += "\n**Examples:**\n\n" + entry.examples + "\n";
+                }
             }
         }
 
