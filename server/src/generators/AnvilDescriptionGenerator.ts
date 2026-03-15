@@ -3,6 +3,7 @@ import { AnvilDocument } from "../core/AnvilDocument";
 import { AnvilLspUtils } from "../utils/AnvilLspUtils";
 import { AnvilAstNode } from "../core/ast/AnvilAst";
 import z from "zod";
+import { astNodeInfo } from "../info/parsed";
 
 export class AnvilDescriptionGenerator {
 
@@ -92,6 +93,15 @@ export class AnvilDescriptionGenerator {
         return n.kind;
     }
 
+    /**
+     * Returns a human-readable label for the node kind (e.g. "process", "register"),
+     * falling back to the raw kind string when no entry is found in ast-node-info.json.
+     */
+    private static nodeLabel(n: AnvilAstNode): string {
+        const entry = astNodeInfo.getFor(n);
+        return entry?.name ?? this.nodeType(n) ?? '';
+    }
+
     private static getTextForNode(
         node: AnvilAstNode,
         anvilDocument: AnvilDocument,
@@ -135,7 +145,7 @@ export class AnvilDescriptionGenerator {
         options?: { expanded?: boolean | "auto" }
     ): string {
         const kind = this.nodeType(node);
-        const kindStr = kind && node.isLabelled ? `/* ${kind} */\n` : '';
+        const kindStr = kind && node.isLabelled ? `/* ${this.nodeLabel(node)} */\n` : '';
 
         const span = node.span;
 
@@ -167,16 +177,20 @@ export class AnvilDescriptionGenerator {
                     case "spawn_def":
                     case "channel_def":
                     case "message_def":
-                    case "endpoint_def":
+                    case "endpoint_def": {
                         expanded = true;
                         break;
+                    }
                     case "wait":
                     case "join":
                     case "binop":
-                    case "unop":
+                    case "unop": {
                         operOnly = true;
-                    default:
+                        // fallthrough
+                    }
+                    default: {
                         expanded = false;
+                    }
                 }
             } else {
                 expanded = !!(options?.expanded);
@@ -191,17 +205,17 @@ export class AnvilDescriptionGenerator {
                         break;
                     }
                     case "wait": {
-                        operOnly = ">>";
+                        operOnly = kindStr.trim() + " >>"
                         break;
                     }
                     case "join": {
-                        operOnly = ";";
+                        operOnly = kindStr.trim() + " ;"
                         break;
                     }
                 }
 
                 if (typeof operOnly === "string") {
-                    return kindStr + prefix + `${operOnly}\n`;
+                    return operOnly + "\n";
                 } else {
                     return kindStr + prefix;
                 }
@@ -286,18 +300,21 @@ export class AnvilDescriptionGenerator {
         segments?: {
             /** Anvil code block showing the node's own source text. */
             code?: boolean;
-            /** Documentation from source doc-comments (not yet implemented). */
+            /** Documentation for this node's kind from ast-node-info.json. */
             documentation?: boolean;
             /** Definitions referenced by this node. */
             definitions?: boolean;
+            /** Explanations of the node */
+            explanations?: boolean;
             /** Internal debug information (path, kind, span, raw JSON). */
             debug?: boolean;
         }
     ): string {
 
-        let documentationSegment = "";
         let codeSegment = "";
+        let documentationSegment = "";
         let definitionsSegment = "";
+        let explanationSegment = "";
         let debugPathSegment = "";
 
         const kind = this.nodeType(node);
@@ -307,9 +324,6 @@ export class AnvilDescriptionGenerator {
             const defFullStr = this.getNodeDefinitionStr(node, anvilDocument, supplementaryDocuments, { expanded: "auto" });
             codeSegment = "```anvil\n" + defFullStr + "```\n";
         }
-
-        // populate documentation segment (not yet implemented — placeholder)
-        // if (segments?.documentation) { ... }
 
         // populate definitions segment
         if (segments?.definitions) {
@@ -327,13 +341,26 @@ export class AnvilDescriptionGenerator {
 
             if (defStrs.length > 0) {
                 if (segments?.code) {
-                    definitionsSegment += "\n\n---\n\n**Definitions:**\n\n";
+                    definitionsSegment += "\n\n---\n\n"
+                    definitionsSegment += "**Definitions:**\n\n";
                 }
 
                 definitionsSegment +=
                     "```anvil\n"
                     + defStrs.join("\n")
                     + "```\n";
+            }
+        }
+
+        // populate explanation segment
+        if (segments?.explanations) {
+            const entry = astNodeInfo.getFor(node);
+
+            if (entry && !entry.internal) {
+                const hasAbove = !!(documentationSegment || codeSegment || definitionsSegment);
+                const sep = hasAbove ? "\n\n---\n\n" : "";
+
+                explanationSegment = sep + "**Information:**\n\n" + entry.description + "\n";
             }
         }
 
@@ -351,7 +378,7 @@ export class AnvilDescriptionGenerator {
             + "\n```\n";
         }
 
-        return codeSegment + documentationSegment + definitionsSegment + debugPathSegment;
+        return codeSegment + documentationSegment + definitionsSegment + explanationSegment + debugPathSegment;
     }
 
     /**
@@ -362,6 +389,10 @@ export class AnvilDescriptionGenerator {
         anvilDocument: AnvilDocument,
         supplementaryDocuments?: (f: AnvilAstNode) => AnvilDocument | null
     ): Promise<string> {
-        return this.describeNode(node, anvilDocument, supplementaryDocuments);
+        return this.describeNode(node, anvilDocument, supplementaryDocuments, {
+            code: true,
+            documentation: true,
+            definitions: true,
+        });
     }
 }

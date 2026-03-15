@@ -1,18 +1,59 @@
+import z from "zod";
 import { CompletionItem, CompletionItemKind, InsertTextFormat, Position} from "vscode-languageserver";
 import { AnvilAstNode, AnvilAstNodePath } from "../core/ast/AnvilAst";
 import { AnvilDocument } from "../core/AnvilDocument";
 import { AnvilServerSettings } from "../utils/AnvilServerSettings";
 import { AnvilChannelClassSchema, AnvilProcSchema, AnvilTypeSchema } from "../core/ast/schema";
-import z from "zod";
+import { completionInfo } from "../info/parsed";
 
 export class AnvilCompletionDetail {
-  constructor(
+  private constructor(
     public label: string,
     public insertText: string = label,
     public lspKind: CompletionItemKind,
     public hint: string,
     private documentation: { node?: AnvilAstNode, desc?: string } = {},
   ) { }
+
+  public static create(label: string, insertText: string, lspKind: CompletionItemKind, hint: string, documentation?: { node?: AnvilAstNode, desc?: string }) {
+    return new AnvilCompletionDetail(label, insertText, lspKind, `(${hint})`, documentation);
+  }
+
+  public static fromKeyword(keyword: string, category?: string | null, scopePrefixData?: string): AnvilCompletionDetail[] {
+    const entry = completionInfo.getKeywordMetadata(keyword);
+    let list: AnvilCompletionDetail[] = [];
+    for (const variant of entry?.variants ?? []) {
+      if (category && variant.category !== category) continue;
+
+      const label = keyword;
+      const insertText = variant.snippet ?? keyword;
+      const lspKind = (CompletionItemKind as any)[variant.lspKind] ?? CompletionItemKind.Keyword;
+      const hint = variant.hint;
+      const desc = variant.description ?? null;
+
+      const scope = variant.scope;
+      // TODO: Check scope
+
+      list.push(AnvilCompletionDetail.create(label, insertText, lspKind, hint, { desc: desc ?? undefined }));
+    }
+    return list;
+  }
+
+  public static snippetFromNode(label: string, insertText: string, node: AnvilAstNode): AnvilCompletionDetail {
+    const typedef = node.resolveAs(AnvilTypeSchema);
+    const useTypedefData = typedef?.type === 'record' || typedef?.type === 'variant';
+    const entry =
+      (useTypedefData ? completionInfo.getKindMetadata(typedef.data_type.kind, typedef.data_type.type) : null) ??
+      (completionInfo.getKindMetadata(node.kind, node.type));
+
+    const lspKind = (CompletionItemKind as any)[entry?.lspKind ?? 'Text'] ?? CompletionItemKind.Text;
+    const hint = entry?.hint ?? '';
+    return AnvilCompletionDetail.create(label, insertText, lspKind, hint, { node });
+  }
+
+  public static basicFromNode(insertText: string, node: AnvilAstNode): AnvilCompletionDetail {
+    return this.snippetFromNode(insertText, insertText, node);
+  }
 
   public get isSnippet() {
     return this.insertText != this.label;
@@ -167,17 +208,12 @@ export class AnvilCompletionGenerator {
       .satisfyingType("native")
       ?.down("regs")
       .children
-      ?? [];
+
+    if (!regs) return null;
 
     const matchingRegs = regs.filter(r => r.name?.startsWith(regPartialNamePrefix));
 
-    return matchingRegs.map(r => new AnvilCompletionDetail(
-      r.name!,
-      r.name!,
-      CompletionItemKind.Variable,
-      '(register)',
-      { node: r }
-    ));
+    return matchingRegs.map(r => AnvilCompletionDetail.basicFromNode(r.name!, r));
   }
 
 
@@ -210,19 +246,16 @@ export class AnvilCompletionGenerator {
       ?.down("body")
       .satisfyingType("native")
       ?.down("regs")
-      .children
-      ?? [];
+      .children;
 
     if (!regs) return null;
 
     const matchingRegs = regs.filter(r => r.name?.startsWith(regPartialNamePrefix));
 
-    return matchingRegs.map(r => new AnvilCompletionDetail(
+    return matchingRegs.map(r => AnvilCompletionDetail.snippetFromNode(
       r.name!,
-      r.name! + "$1 := $0",
-      CompletionItemKind.Variable,
-      '(register)',
-      { node: r }
+      r.name! + '$1 := $0',
+      r
     ));
   }
 
@@ -288,13 +321,7 @@ export class AnvilCompletionGenerator {
 
     if (!messagePartialNamePrefix && !hasDot) {
       // If we haven't completed the endpoint, return endpoints.
-      return endpointCandidates.flatMap(e => e.names.map(n => new AnvilCompletionDetail(
-        n,
-        n,
-        CompletionItemKind.Interface,
-        '(endpoint)',
-        { node: e }
-      )));
+      return endpointCandidates.flatMap(e => e.names.map(n => AnvilCompletionDetail.basicFromNode(n!, e)));
     }
 
     // We have an endpoint now!
@@ -330,12 +357,10 @@ export class AnvilCompletionGenerator {
 
     console.log(`Found ${messageCompletions.length} message candidates for prefix "${messagePartialNamePrefix}"`);
 
-    return messageCompletions.map(m => new AnvilCompletionDetail(
+    return messageCompletions.map(m => AnvilCompletionDetail.snippetFromNode(
       m.name!,
       m.name! + (isSend ? "($1)$0" : ""),
-      CompletionItemKind.Method,
-      `${isSend ? 'send' : 'recv'} (message)`,
-      { node: m }
+      m
     ));
   }
 
@@ -392,24 +417,51 @@ export class AnvilCompletionGenerator {
 
 
     if (!hasRangeStartAnnot) {
-      // lifetime part
-      completionItems.push(new AnvilCompletionDetail(
-        '#N',
-        '#$1)$0',
-        CompletionItemKind.TypeParameter,
-        '(fixed lifetime)',
-        { desc: 'Valid for N cycles' }
-      ));
+      const hashPresentInPrefix = firstAnnotPrefix.startsWith('#');
+      const H = !hashPresentInPrefix ? '#' : '';
+      const hashReformat = (s: string) => {
+        if (s.startsWith('#')) {
+          return H + s.slice(1);
+        } else {
+          return s;
+        }
+      }
 
-      completionItems.push(...messageDefs.flatMap(m => [
-        new AnvilCompletionDetail(
-          m.name!,
-          m.name! + '$1)$0',
-          CompletionItemKind.TypeParameter,
-          '(relative lifetime)',
-          { node: m, desc: 'Valid for the same amount of time this endpoint is valid.' }
-        ),
-      ]));
+      // lifetime part — one fixed entry per lifetime key, plus per-message entries for %s patterns
+      for (const key of completionInfo.knownLifetimeTimingKeys) {
+        const entry = completionInfo.getLifetimeTimingEntry(key)!;
+        const lspKind = (CompletionItemKind as any)[entry.lspKind] ?? CompletionItemKind.TypeParameter;
+
+        if (!entry.insertText.startsWith('#') && hashPresentInPrefix) {
+          // The snippet doesn't start with # but the user already typed a # (not a match)
+          continue;
+        }
+
+        if (key.includes('%s')) {
+          // Expand %s into one completion per sibling message
+          for (const msgDef of messageDefs) {
+            const msgName = msgDef.name!;
+            const label       = key.replace(/%s/g, msgName);
+            const insertText  = entry.insertText.replace(/%s/g, msgName);
+            const description = entry.description?.replace(/%s/g, `\`${msgName}\``) ?? null;
+            completionItems.push(AnvilCompletionDetail.create(
+              hashReformat(label),
+              hashReformat(insertText),
+              lspKind,
+              entry.hint,
+              { node: msgDef, desc: description ?? undefined }
+            ));
+          }
+        } else {
+          completionItems.push(AnvilCompletionDetail.create(
+            hashReformat(key),
+            hashReformat(entry.insertText),
+            lspKind,
+            entry.hint,
+            { desc: entry.description ?? undefined }
+          ));
+        }
+      }
 
     } else {
       if (hasRangeStartAnnot && !hasRangeStartAtSign) {
@@ -420,52 +472,64 @@ export class AnvilCompletionGenerator {
         return [];
       }
 
-      const needsHash = !(
-        (rangeStartAnnotPrefix.startsWith('#') && !hasRangeEndAnnot) || (rangeEndAnnotPrefix.startsWith('#'))
-      );
-      const H = needsHash ? '#' : '';
+      const hashPresentInPrefix = (rangeStartAnnotPrefix.startsWith('#') && !hasRangeEndAnnot) || (rangeEndAnnotPrefix.startsWith('#'))
+      const H = !hashPresentInPrefix ? '#' : '';
+      const hashReformat = (s: string) => {
+        if (s.startsWith('#')) {
+          return H + s.slice(1);
+        } else {
+          return s;
+        }
+      }
 
-      // synchronisation part
-      completionItems.push(new AnvilCompletionDetail(
-        H + 'N',
-        H + '$0',
-        CompletionItemKind.TypeParameter,
-        '(fixed sync)',
-        { desc: 'Valid beginning after every N cycles from start\n(`kN for k >= 1`)' }
-      ));
+      // synchronisation part — one fixed entry per sync key, plus per-message entries for %s patterns
+      for (const key of completionInfo.knownSyncTimingKeys) {
+        const entry = completionInfo.getSyncTimingEntry(key)!;
+        const lspKind = (CompletionItemKind as any)[entry.lspKind] ?? CompletionItemKind.TypeParameter;
 
-      completionItems.push(new AnvilCompletionDetail(
-        H + 'M~N',
-        H + '$1~$0',
-        CompletionItemKind.TypeParameter,
-        '(fixed sync)',
-        { desc: 'Valid beginning Mth cycle, and beginning every N cycles after (`M+kN for k >= 0`)' }
-      ));
+        if (key.includes('%s')) {
+          // Expand %s into one completion per sibling message
+          for (const msgDef of messageDefs) {
+            const msgName = msgDef.name!;
+            const rawLabel   = key.replace(/%s/g, msgName);
+            const rawInsert  = entry.insertText.replace(/%s/g, msgName);
 
-      completionItems.push(new AnvilCompletionDetail(
-        'dyn',
-        'dyn',
-        CompletionItemKind.TypeParameter,
-        '(dynamic sync)',
-        { desc: 'Dynamically synchronised validity.' }
-      ));
+            if (!rawInsert.startsWith('#') && hashPresentInPrefix) {
+              // The snippet doesn't start with # but the user already typed a # (not a match)
+              continue;
+            }
 
-      completionItems.push(...messageDefs.flatMap(m => [
-        new AnvilCompletionDetail(
-          m.name!,
-          H + m.name!,
-          CompletionItemKind.TypeParameter,
-          '(relative sync)',
-          { node: m, desc: 'Valid starting when this endpoint is valid.' }
-        ),
-        new AnvilCompletionDetail(
-          m.name! + "+N",
-          H + m.name! + "+$0",
-          CompletionItemKind.TypeParameter,
-          '(relative sync)',
-          { node: m, desc: 'Valid starting N cycles after this endpoint becomes valid.' }
-        ),
-      ]));
+            const finalLabel  = hashReformat(rawLabel);
+            const finalInsert = hashReformat(rawInsert);
+            const description = entry.description?.replace(/%s/g, `\`${msgName}\``) ?? null;
+            completionItems.push(AnvilCompletionDetail.create(
+              finalLabel,
+              finalInsert,
+              lspKind,
+              entry.hint,
+              { node: msgDef, desc: description ?? undefined }
+            ));
+          }
+        } else {
+          // For non-%s entries that already start with '#', strip the leading '#' from
+          // label/insertText when H is empty (it would be a duplicate '#').
+          const finalLabel    = hashReformat(key);
+          const finalInsert   = hashReformat(entry.insertText);
+
+          if (!entry.insertText.startsWith('#') && hashPresentInPrefix) {
+            // The snippet doesn't start with # but the user already typed a # (not a match)
+            continue;
+          }
+
+          completionItems.push(AnvilCompletionDetail.create(
+            finalLabel,
+            finalInsert,
+            lspKind,
+            entry.hint,
+            { desc: entry.description ?? undefined }
+          ));
+        }
+      }
     }
     return completionItems;
   }
@@ -574,11 +638,11 @@ export class AnvilCompletionGenerator {
 
     const snippet = '<' + matchingParams.map((p, i) => `\${${i + 1}:${p}}`).join(', ') + '>';
 
-    return [new AnvilCompletionDetail(
+    return [AnvilCompletionDetail.create(
       "<...>",
       snippet.slice(1) /* remove the leading < since it's already in the regex matching rule */,
       CompletionItemKind.TypeParameter,
-      `(type parameters)`,
+      `type parameters`,
       { node: typeDef }
     )];
   }
@@ -621,12 +685,10 @@ export class AnvilCompletionGenerator {
         ? '(' + endpoints.map((e, i) => `\${${i + 1 + params.length}:${e}}`).join(', ') + ')'
         : '()';
 
-      return new AnvilCompletionDetail(
+      return AnvilCompletionDetail.snippetFromNode(
         name,
         name + paramFormat + endpointFormat,
-        CompletionItemKind.Module,
-        '(process)',
-        { node: p }
+        p
       );
     });
 
@@ -668,12 +730,10 @@ export class AnvilCompletionGenerator {
         ? '(' + args.map((a, i) => `\${${i + 1}:${a}}`).join(', ') + ')'
         : '()';
 
-      return new AnvilCompletionDetail(
+      return AnvilCompletionDetail.snippetFromNode(
         name,
         name + argFormat,
-        CompletionItemKind.Function,
-        '(function)',
-        { node: f }
+        f
       );
     });
 
@@ -733,12 +793,10 @@ export class AnvilCompletionGenerator {
 
           fieldTemplate = fieldTemplate.slice(memberPartialPrefix.length);
 
-          return [new AnvilCompletionDetail(
+          return [AnvilCompletionDetail.snippetFromNode(
             previewTemplate,
             fieldTemplate,
-            CompletionItemKind.Struct,
-            `(record field)`,
-            { node: typeDef }
+            typeDef
           )];
         }
         case 'variant': {
@@ -750,16 +808,14 @@ export class AnvilCompletionGenerator {
 
           console.log(`Found ${matchingVariants.length} variant candidates for prefix "${memberPartialPrefix}"`);
 
-          return matchingVariants.map(v => new AnvilCompletionDetail(
+          return matchingVariants.map(v => AnvilCompletionDetail.snippetFromNode(
             v.name!,
             memberPartialPrefix.startsWith('::')
               ? v.name! :
             memberPartialPrefix.startsWith(':')
               ? ':' + v.name!
               : '::' + v.name!,
-            CompletionItemKind.EnumMember,
-            `(variant value)`,
-            { node: v }
+            v
           ));
         }
         default: {
@@ -824,28 +880,15 @@ export class AnvilCompletionGenerator {
     return nodes.flatMap((node) => {
       if (!node) return null;
 
-      const nodeKind = node.kind;
-
       let identifiers: string[] = [];
       identifiers.push(...node.names);
-
-      let lspKind: CompletionItemKind = CompletionItemKind.Text;
-      let hint: string | undefined = undefined;
 
       let list: AnvilCompletionDetail[] = [];
 
       for (const name of identifiers) {
         if (!name) return null;
 
-        ({lspKind, hint} = AnvilCompletionGenerator.getPropsForNodeKind(nodeKind));
-
-        list.push(new AnvilCompletionDetail(
-          name,
-          name,
-          lspKind,
-          hint || '',
-          { node }
-        ));
+        list.push(AnvilCompletionDetail.basicFromNode(name, node));
       }
 
       return list;
@@ -854,126 +897,15 @@ export class AnvilCompletionGenerator {
     .map(c => c!) ?? [];
   }
 
-
-  private static getPropsForNodeKind(nodeKind: AnvilAstNode['kind']): {lspKind: CompletionItemKind, hint?: string} {
-    switch (nodeKind) {
-      case 'expr': {
-        return {
-          lspKind: CompletionItemKind.Variable,
-        };
-      }
-      case 'reg_def': {
-        return {
-          lspKind: CompletionItemKind.Variable,
-          hint: `(register)`,
-        };
-      }
-      case 'channel_class_def': {
-        return {
-          lspKind: CompletionItemKind.Class,
-          hint: `(channel)`,
-        };
-      }
-      case 'struct_def': {
-        return {
-          lspKind: CompletionItemKind.Struct,
-          hint: `(struct)`,
-        };
-      }
-      case 'func_def': {
-        return {
-          lspKind: CompletionItemKind.Function,
-          hint: `(function)`,
-        };
-      }
-      case 'proc_def': {
-        return {
-          lspKind: CompletionItemKind.Module,
-          hint: `(process)`,
-        };
-      }
-      case 'macro_def': {
-        return {
-          lspKind: CompletionItemKind.Constant,
-          hint: `(macro)`,
-        };
-      }
-      case 'endpoint_def': {
-        return {
-          lspKind: CompletionItemKind.Interface,
-          hint: `(endpoint)`,
-        };
-      }
-      case 'message_def': {
-        return {
-          lspKind: CompletionItemKind.Method,
-          hint: `(message)`,
-        };
-      }
-      default: {
-        return {
-          lspKind: CompletionItemKind.Text,
-        };
-      }
-    }
-  }
-
   private static getAnvilBuiltinCompletions(category?: string | null, filter?: string[]): AnvilCompletionDetail[] {
-    let completionItems: AnvilCompletionDetail[] = [];
-    const populateKeywords = (labels: string[], hint: string, type?: string, kind?: CompletionItemKind) => {
-      completionItems.push(...labels.map((label) => {
-        return new AnvilCompletionDetail(
-          label,
-          label,
-          kind || CompletionItemKind.Keyword,
-          '(' + hint + ')',
-          { desc: `Anvil built-in ${hint} ${type ?? 'keyword'} \`${label}\`` }
-        );
-      }));
-    };
+    const completionItems: AnvilCompletionDetail[] = [];
 
-    populateKeywords([
-      'left', 'right', 'extern',
-      'shared', 'assigned by', 'import', 'generate', 'generate_seq',
-    ], 'modifier');
+    for (const keyword of completionInfo.knownKeywords) {
+      if (filter && !filter.includes(keyword)) continue;
+      completionItems.push(...AnvilCompletionDetail.fromKeyword(keyword, category));
+    }
 
-    populateKeywords([
-      'logic', 'int',
-    ], 'type');
-
-    populateKeywords([
-      'struct', 'enum', 'proc', 'spawn', 'type', 'func', 'const', 'reg', 'chan',
-    ], 'declaration');
-
-    populateKeywords([
-      'call', 'loop', 'recursive', 'if', 'else', 'try', 'recurse', 'recv', 'send',
-      'dprint', 'dfinish', 'set', 'cycle', 'sync',  'match', 'put',  'ready', 'in',
-      'probe',
-    ], 'control');
-
-    populateKeywords(['with'], 'misc');
-    populateKeywords(['let'], 'binding');
-
-    populateKeywords(['@#', '@dyn', '~'], 'timing');
-
-    completionItems.push(...[
-      ['>>', 'wait', 'wait for evaluation of lhs before evaluating rhs'],
-      [':=', 'assign', 'assign rhs value to lhs'],
-      [';', 'join', 'evaluate lhs and rhs simulataneously'],
-    ].map(([label, hint, detail]) => {
-      let kind: CompletionItemKind = CompletionItemKind.Operator;
-      return new AnvilCompletionDetail(
-        label,
-        label,
-        kind,
-        '(' + hint + ')',
-        { desc: `Anvil built-in ${hint} operator \`${label}\`\n\n---\n\n${detail}` }
-      );
-    }));
-
-    return completionItems
-      .filter(c => !filter || filter.includes(c.label))
-      .filter(c => !category || c.hint.includes(`(${category})`));
+    return completionItems;
   };
 
 

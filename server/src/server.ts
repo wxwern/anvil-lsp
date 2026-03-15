@@ -332,6 +332,7 @@ connection.onHover(async (params) => {
 				code: true,
 				documentation: true,
 				definitions: true,
+				explanations: true,
 				debug: D,
 			})
 		}
@@ -488,7 +489,7 @@ connection.onCompletionResolve(async (item: CompletionItem) => {
 					code: true,
 					documentation: true,
 					definitions: true,
-					debug: true,
+					explanations: true,
 				}) || '';
 
 				let descs = [];

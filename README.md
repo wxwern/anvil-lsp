@@ -24,7 +24,7 @@ To install a supported version of Anvil, view the [Anvil installation instructio
     - [x] Definition info
     - [ ] Lifetime info
     - [ ] Documentation (from source doc comments)
-    - [ ] Built-in syntax descriptions
+    - [x] Built-in syntax descriptions
 - [x] Go to Definition
 - [ ] Go to Type Definition
 - [x] Find All References
