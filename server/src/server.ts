@@ -84,6 +84,7 @@ connection.onInitialize((params: InitializeParams) => {
 				workspaceDiagnostics: false
 			},
 			definitionProvider: true,
+			typeDefinitionProvider: true,
 			referencesProvider: true,
 			hoverProvider: true,
 			inlayHintProvider: true
@@ -398,7 +399,64 @@ connection.onDefinition(async (params) => {
 	});
 });
 
-// References
+// Type Definitions
+connection.onTypeDefinition(async (params) => {
+	const document = documents.get(params.textDocument.uri);
+	if (document === undefined) return null;
+
+	const settings = await documentSettings.get(document.uri);
+
+	const anvilDocument = documentAnvilManagers.get(document.uri);
+	if (!anvilDocument) return null;
+
+	if (!anvilDocument.anvilAst) {
+		await anvilDocument.compile(settings);
+	}
+
+	const ast = anvilDocument.anvilAst;
+	if (!ast) {
+		console.log(`AST not yet available for document ${document.uri}`);
+		return null;
+	}
+
+	const position = params.position;
+
+	const node = anvilDocument.getClosestAnvilNodeToLspPosition(position);
+	const identifierUnderCursor = anvilDocument.getClosestIdentifierToLspPosition(position);
+
+	if (!node) {
+		console.log(`No type definition result found`);
+		return null;
+	}
+
+	let allDefs = node.definitions;
+	if (!allDefs || allDefs.length === 0) {
+		console.log(`No definitions found for node at position`);
+		return null;
+	}
+
+	const typeDefs = allDefs.filter(def => {
+		const n = ast.node(def);
+		return n?.satisfiesKind('type_def') || n?.satisfiesKind('type_element_def');
+	});
+
+	if (typeDefs.length === 0) {
+		console.log(`No type definitions found for node at position`);
+		return null;
+	}
+
+	console.log(`Found ${typeDefs.length} type definition(s) for node at position`);
+
+	return typeDefs.map(def => {
+		return {
+			uri: "file://" + def.fullpath,
+			range:
+				documentAnvilManagers.get("file://" + def.fullpath)?.getLspRangeOfAnvilSpan(def.span) ??
+				AnvilLspUtils.anvilSpanToLspRange(def.span)
+		}
+	});
+});
+
 connection.onReferences(async (params) => {
 	const document = documents.get(params.textDocument.uri);
 	if (document === undefined) return null;

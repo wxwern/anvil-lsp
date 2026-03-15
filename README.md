@@ -26,7 +26,7 @@ To install a supported version of Anvil, view the [Anvil installation instructio
     - [ ] Documentation (from source doc comments)
     - [x] Built-in syntax descriptions
 - [x] Go to Definition
-- [ ] Go to Type Definition
+- [x] Go to Type Definition
 - [x] Find All References
 - [x] Signature Help
     - [x] Spawn process arguments (`spawn <proc>(<args>)`)
