@@ -88,3 +88,8 @@ export const compilerLogger = createLogger('Compiler');
  * Logger for diagnostics operations.
  */
 export const diagnosticsLogger = createLogger('Diagnostics');
+
+/**
+ * Logger for inlay hint operations.
+ */
+export const inlayHintLogger = createLogger('InlayHint');

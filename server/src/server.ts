@@ -14,7 +14,6 @@ import {
 	type DocumentDiagnosticReport,
 	FileChangeType,
 	CompletionItem,
-	InlayHintKind,
 } from 'vscode-languageserver/node';
 import { TextDocument } from 'vscode-languageserver-textdocument';
 import { TextDocumentConnection } from 'vscode-languageserver/lib/common/textDocuments';
@@ -26,7 +25,8 @@ import { LazyMap } from './utils/LazyMap';
 import { AnvilDescriptionGenerator } from './generators/AnvilDescriptionGenerator';
 import { AnvilCompletionGenerator} from './generators/AnvilCompletionGenerator';
 import { AnvilSignatureHelpGenerator } from './generators/AnvilSignatureHelpGenerator';
-import { AnvilAstNode, AnvilAstNodePath, AnvilEventInfo } from './core/ast/AnvilAst';
+import { AnvilInlayHintGenerator } from './generators/AnvilInlayHintGenerator';
+import { AnvilAstNode, AnvilAstNodePath } from './core/ast/AnvilAst';
 import { serverLogger } from './utils/logger';
 
 //
@@ -632,205 +632,19 @@ connection.languages.inlayHint.on(async (params) => {
 	const uri = params.textDocument.uri;
 	const settings = await documentSettings.get(uri);
 
-	if (!(settings.inlayHints?.timingInfo)) {
-		return [];
-	}
-
 	const anvilDocument = documentAnvilManagers.get(uri);
+
 	if (!anvilDocument) return [];
 
 	if (!anvilDocument.anvilAst) {
 		await anvilDocument.compile(settings);
 	}
 
-	if (!anvilDocument.anvilAst) {
-		serverLogger.info(`AST not yet available for document ${uri}`);
-		return [];
-	}
+	const inlayHints = AnvilInlayHintGenerator.generateInlayHints(anvilDocument, settings);
 
-	const lineCount = anvilDocument.textDocument.lineCount;
+	serverLogger.info(`Generated ${inlayHints.length} inlay hint(s) for document ${uri}`);
 
-	const locs = anvilDocument.anvilAst.getAllLocatableNodes(anvilDocument.filepath);
-
-	let inlineInject: {[lineno: number]: string} = [];
-	let postfixInject: {[lineno: number]: string} = [];
-	let maxTextLen = 0;
-	const markerLen = 3;
-	const formatEvent = (e: AnvilEventInfo | null) => {
-		if (e === null) return null;
-
-		const eid = e.eid;
-		const tid = e.tid;
-		const delays = e.delays;
-
-		const debugEid = settings.debug ? ` (e${eid})` : '';
-		const delayStr = delays ? `t${tid} c` + delays.map(d => '' + d).join('/') + debugEid : '';
-
-		return delayStr || `t${tid} c?${debugEid}`;
-	}
-
-	for (let loc of locs) {
-		const node = anvilDocument.anvilAst?.node(loc);
-		if (!node) continue;
-		const event = formatEvent(node.event);
-		const susTillEv = formatEvent(node.sustainedTillEvent);
-		if (!event) continue;
-
-		const lspStartLine =
-			anvilDocument.getLspPosOfAnvilPos({ line: loc.span.start.line, col: 0 })?.line ??
-			AnvilLspUtils.anvilPosToLspPos(loc.span.start).line;
-
-		const lspEndLine =
-			anvilDocument.getLspPosOfAnvilPos({ line: loc.span.end.line, col: 0 })?.line ??
-			AnvilLspUtils.anvilPosToLspPos(loc.span.end).line;
-
-		for (let l = lspStartLine; l <= lspEndLine; l++) {
-			// Assumption: locs are discovered pre-order
-			//  - Inner nodes will override outer nodes if they share the same line,
-			//    which is desirable for better specificity of inlay hints
-			inlineInject[l] = event;
-		}
-		postfixInject[lspEndLine] = susTillEv ? ` ... sustained till ${susTillEv} ends` : '';
-		maxTextLen = Math.max(maxTextLen, event.length);
-	}
-
-	maxTextLen = Math.max(8, Math.pow(2, Math.ceil(Math.log2(maxTextLen + markerLen))));
-
-	serverLogger.info(`Found inlay hints at ${Object.keys(inlineInject)} for document ${uri}`);
-
-	const inlineRanges: [number, string][] = [];
-	for (let line = 0; line < lineCount; line++) {
-		if (inlineInject[line]) {
-			const text = inlineInject[line];
-			if (text.length < maxTextLen) {
-				// pad with spaces to ensure inlay hints are aligned
-				inlineRanges.push([line, ' '.repeat(maxTextLen - text.length - markerLen) + text]);
-			} else {
-				inlineRanges.push([line, text]);
-			}
-		} else {
-			inlineRanges.push([line, ' '.repeat(maxTextLen - markerLen)]);
-		}
-	}
-
-	// replace all consecutive matching lines with "   | " to indicate continuation of the same event
-	const ascii = false;
-
-	const loneMarker  = (ascii ? ' - ' : ' ─ ');
-	const startMarker = (ascii ? ',- ' : ' ┌ ');
-	const contMarker  = (ascii ? '|  ' : ' │ ');
-	const endMarker   = (ascii ? "'- " : ' └ ');
-
-	let repeats_above: {[i: number]: boolean} = {};
-
-	let lastText = '';
-	for (let i = 0; i < inlineRanges.length; i++) {
-		let currText = inlineRanges[i][1].trim();
-		if (settings.debug) {
-			currText = currText.replace(/\(e\d+\)/g, '(eX)');
-		}
-
-		repeats_above[i] = currText === lastText;
-		if (currText) {
-			lastText = currText;
-		}
-	}
-
-	for (let i = 0; i < inlineRanges.length; i++) {
-		const currText = inlineRanges[i][1].trim();
-		if (!currText) {
-			inlineRanges[i][1] = ' '.repeat(maxTextLen);
-			continue;
-		}
-
-		const before_is_blank = inlineRanges[i - 1]?.[1].trim() === '';
-
-		const before_eq_curr = repeats_above[i];
-		const curr_eq_after = repeats_above[i + 1];
-
-		if (before_is_blank && before_eq_curr) {
-			// search upwards till we find a non-blank line
-			let j = i - 1;
-			while (j >= 0 && inlineRanges[j][1].trim() === '') {
-				j--;
-			}
-			if (j >= 0) {
-				const wasLone = inlineRanges[j][1].endsWith(loneMarker);
-				const wasEnd = inlineRanges[j][1].endsWith(endMarker);
-				if (wasLone) {
-					inlineRanges[j][1] =
-						inlineRanges[j][1].slice(0, -loneMarker.length) +
-						startMarker;
-				} else if (wasEnd) {
-					inlineRanges[j][1] =
-						inlineRanges[j][1].slice(0, -endMarker.length) +
-						contMarker;
-				}
-			}
-			// replace forwards with contMarker
-			j += 1;
-			while (j < i) {
-				inlineRanges[j][1] =
-					' '.repeat(maxTextLen - markerLen) +
-					contMarker;
-				j++;
-			}
-		}
-
-		const prefix = settings.debug || !before_eq_curr ? inlineRanges[i][1] : ' '.repeat(maxTextLen - markerLen);
-
-		if (!before_eq_curr && curr_eq_after) {
-			// start of a new sequence of repeats, mark with startMarker
-			inlineRanges[i][1] = prefix + startMarker;
-		} else if (before_eq_curr && !curr_eq_after) {
-			// end of a sequence of repeats, mark with endMarker
-			inlineRanges[i][1] = prefix + endMarker;
-		} else if (before_eq_curr && curr_eq_after) {
-			// middle of a sequence of repeats, mark with contMarker
-			inlineRanges[i][1] = prefix + contMarker;
-		} else if (!before_eq_curr && !curr_eq_after) {
-			// lone line, mark with loneMarker
-			inlineRanges[i][1] = prefix + loneMarker;
-		}
-
-		// should not reach here
-	}
-
-	const mergedRanges: [line: number, col: number, text: string][] =
-	[
-		...inlineRanges
-			.map(([line, text]) =>
-				 [line, 0, text] as [number, number, string]),
-
-		...Object.entries(postfixInject)
-			.map(([line, text]) =>
-				 [+line, Infinity, text] as [number, number, string])
-	];
-
-	let calcPostfixPosition = (line: number) => {
-		const lineText = anvilDocument.textDocument.getText({
-			start: { line, character: 0 },
-			end: { line, character: Number.MAX_SAFE_INTEGER }
-		});
-		return lineText.length;
-	}
-
-	return mergedRanges.map(([line, col, text]) => {
-		let pos = {
-			line: line,
-			character: col
-		};
-
-		if (!Number.isFinite(pos?.character ?? 0)) {
-			pos!.character = calcPostfixPosition(pos!.line);
-		}
-
-		return {
-			position: pos,
-			label: text,
-			kind: InlayHintKind.Type
-		}
-	});
+	return inlayHints;
 });
 
 //
