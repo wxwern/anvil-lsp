@@ -66,7 +66,7 @@ export class AnvilDocument {
         TextDocument.create(`file://${filePath}`, 'anvil', 0, data),
         false,
       );
-    } catch (err) {
+    } catch (_) {
       return null;
     }
   }

@@ -14,5 +14,16 @@ export default defineConfig([
   {
     files: ['**/*.{ts,mts,cts}'],
     languageOptions: { parser: tseslint.parser },
+    rules: {
+      '@typescript-eslint/no-this-alias': 'off',
+      '@typescript-eslint/no-unused-vars': [
+        'error',
+        {
+          argsIgnorePattern: '^_',
+          varsIgnorePattern: '^_',
+          caughtErrorsIgnorePattern: '^_',
+        },
+      ],
+    },
   },
 ]);

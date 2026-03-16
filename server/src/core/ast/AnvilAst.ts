@@ -95,6 +95,7 @@ export type AnvilEventInfo = {
  *
  * Each AnvilAstNode is associated with a specific path from the root of the AST, allowing for efficient navigation and resolution.
  */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any -- Generic type parameter default for flexibility
 export class AnvilAstNode<T = any, U extends AnvilAstNode | unknown = unknown> {
   private readonly _root: AnvilCompUnit;
   private readonly _eventIdCycleDelayLookup:
@@ -239,6 +240,7 @@ export class AnvilAstNode<T = any, U extends AnvilAstNode | unknown = unknown> {
     : AnvilAstNode<T[keyof T]>[] {
     const resolved = this.resolve();
 
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- Array of child nodes with unknown element types
     let childNodes: AnvilAstNode<any>[] = [];
 
     if (Array.isArray(resolved)) {
@@ -367,6 +369,7 @@ export class AnvilAstNode<T = any, U extends AnvilAstNode | unknown = unknown> {
       ...this._path,
       key as string | number,
     ]);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- Cache parent node with flexible typing
     node._upCache = this as any;
     node._rootCache = this._rootCache;
     this._downCache[key as string | number] = node;
@@ -523,7 +526,7 @@ export class AnvilAstNode<T = any, U extends AnvilAstNode | unknown = unknown> {
     const upper = this.up().resolve();
 
     if (upper && typeof upper === 'object' && key in upper) {
-      // Populate cache with node
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any -- Validated by if condition
       this._resolveCache = (upper as any)[key];
     } else {
       // Key not found in parent --> this node doesn't exist!
@@ -657,12 +660,13 @@ export class AnvilAstNode<T = any, U extends AnvilAstNode | unknown = unknown> {
     }
 
     switch (this.kind) {
-      case 'channel_def':
+      case 'channel_def': {
         const left = this.unsafeTraverse('endpoint_left').resolveAs(z.string());
         const right = this.unsafeTraverse('endpoint_right').resolveAs(
           z.string(),
         );
         return [left, right].filter((n): n is string => n !== null);
+      }
     }
 
     return [];
@@ -1202,6 +1206,7 @@ export class AnvilAst {
           continue;
         }
 
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any -- Known to be valid per for-in loop
         const child = (node as any)[key];
         sum += this.deepMapNode(child, fbasepath, fpath, [...path, key]);
       }
@@ -1221,6 +1226,7 @@ export class AnvilAst {
    *
    */
   private static deepFlattenNode(node: unknown): unknown {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- Recursively process unknown data structure
     const flatten = (node: any) => {
       if (node && typeof node === 'object' && node.kind === 'ast_node') {
         const { kind: _, data, ...rest } = node;
@@ -1247,6 +1253,7 @@ export class AnvilAst {
       return node;
     };
 
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- Recursive helper for deep flattening unknown structures
     const deepFlatten = (node: any): any => {
       const flattened = flatten(node);
       if (Array.isArray(flattened)) {

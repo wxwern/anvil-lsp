@@ -80,6 +80,7 @@ export class AnvilLspUtils {
     settings1: Partial<AnvilServerSettings>,
     settings2: Partial<AnvilServerSettings>,
   ): boolean {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- Recursive deep equality check requires flexible object typing
     const deepEqual = (obj1: any, obj2: any): boolean => {
       if (obj1 === obj2) return true;
       if (

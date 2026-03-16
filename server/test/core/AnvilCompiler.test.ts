@@ -9,7 +9,7 @@ import assert from 'node:assert';
 import { beforeEach } from 'mocha';
 
 /** Simple hash code for strings (from Java's String.hashCode()) */
-function hashCode(str: string): number {
+function _hashCode(str: string): number {
   let hash = 0;
   for (let i = 0; i < str.length; i++) {
     const chr = str.charCodeAt(i);

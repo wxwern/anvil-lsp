@@ -39,7 +39,7 @@ build-anvil() {
 build-server() {
     header "Building Language Server..."
     cd ./server
-    npm install && npm run build
+    npm install && npm run build && npm run lint
     RESULT=$?
     RESULTS+=($RESULT)
     footer $RESULT

@@ -198,11 +198,13 @@ export class AnvilCompiler {
       : ['-ast', '-json', files[0]];
     try {
       const stdinData = hasInMemoryData ? fileData[files[0]] : undefined;
-      const { stdout, stderr, exitCode } = await this.runAnvil(args, stdinData);
+      const {
+        stdout,
+        stderr,
+        exitCode: _exitCode,
+      } = await this.runAnvil(args, stdinData);
 
       let astOutput: AnvilAst | undefined = undefined;
-
-      const errors: AnvilCompilationError[] = [];
 
       try {
         const jsonOutput: AnvilJsonOutput = JSON.parse(stdout);

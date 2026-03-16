@@ -187,7 +187,7 @@ export class AnvilDescriptionGenerator {
       case 'cycles':
         lifetimeStr = `- Must be sustained for \`${lifetime.ending.value}\` cycle(s)\n`;
         break;
-      case 'message':
+      case 'message': {
         lifetimeStr = `- Must be sustained for \`${lifetime.ending.value}\`'s lifetime duration`;
         const offset = lifetime.ending.offset;
         if (offset) {
@@ -195,6 +195,7 @@ export class AnvilDescriptionGenerator {
         }
         lifetimeStr += '\n';
         break;
+      }
       case 'eternal':
         lifetimeStr = `- Must be sustained indefinitely\n`;
         break;
@@ -277,6 +278,7 @@ export class AnvilDescriptionGenerator {
   //
 
   static getNodeDefinitionStr(
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- Accept any AST node kind for flexible description generation
     node: AnvilAstNode<any>,
     anvilDocument: AnvilDocument,
     supplementaryDocuments?: (f: AnvilAstNode) => AnvilDocument | null,

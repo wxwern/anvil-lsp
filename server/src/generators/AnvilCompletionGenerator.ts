@@ -47,7 +47,7 @@ export class AnvilCompletionDetail {
   public static fromKeyword(
     keyword: string,
     category?: string | null,
-    scopePrefixData?: string,
+    _scopePrefixData?: string,
   ): AnvilCompletionDetail[] {
     const entry = completionInfo.getKeywordMetadata(keyword);
     const list: AnvilCompletionDetail[] = [];
@@ -57,12 +57,13 @@ export class AnvilCompletionDetail {
       const label = keyword;
       const insertText = variant.snippet ?? keyword;
       const lspKind =
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any -- Access enum value by string key
         (CompletionItemKind as any)[variant.lspKind] ??
         CompletionItemKind.Keyword;
       const hint = variant.hint;
       const desc = variant.description ?? null;
 
-      const scope = variant.scope;
+      const _scope = variant.scope;
       // TODO: Check scope
 
       list.push(
@@ -96,6 +97,7 @@ export class AnvilCompletionDetail {
         : null) ?? completionInfo.getKindMetadata(node.kind, node.type);
 
     const lspKind =
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any -- Access enum value by string key
       (CompletionItemKind as any)[entry?.lspKind ?? 'Text'] ??
       CompletionItemKind.Text;
     const hint = entry?.hint ?? '';
@@ -631,6 +633,7 @@ export class AnvilCompletionGenerator {
       for (const key of completionInfo.knownLifetimeTimingKeys) {
         const entry = completionInfo.getLifetimeTimingEntry(key)!;
         const lspKind =
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any -- Access enum value by string key
           (CompletionItemKind as any)[entry.lspKind] ??
           CompletionItemKind.TypeParameter;
 
@@ -699,6 +702,7 @@ export class AnvilCompletionGenerator {
       for (const key of completionInfo.knownSyncTimingKeys) {
         const entry = completionInfo.getSyncTimingEntry(key)!;
         const lspKind =
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any -- Access enum value by string key
           (CompletionItemKind as any)[entry.lspKind] ??
           CompletionItemKind.TypeParameter;
 
@@ -792,7 +796,7 @@ export class AnvilCompletionGenerator {
     const hasOpenParen = !!match[4];
     const typedefPartialPrefix = match[5] || '';
     const typedefPartialNamePrefix =
-      typedefPartialPrefix.split(/[<>\(\)\[\]]/g).slice(-1)[0] || '';
+      typedefPartialPrefix.split(/[<>()[\]]/g).slice(-1)[0] || '';
     const ast = document.anvilAst;
 
     if (!ast) return null;
@@ -1166,6 +1170,7 @@ export class AnvilCompletionGenerator {
   // UTILITIES
   //
 
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- Generic type parameters with defaults for flexibility
   private static getAllNodes<T = any, S = any>(
     position: Position,
     document: AnvilDocument,

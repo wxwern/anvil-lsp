@@ -710,6 +710,7 @@ describe('info/parsed.ts', () => {
           },
         },
       };
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any -- Test data with incomplete structure
       const withNodeInfo = new CompletionInfo(raw as any, astNodeInfo);
       const lt = assertNonNull(withNodeInfo.getLifetimeTimingEntry('testlt'));
       assert.strictEqual(
@@ -746,6 +747,7 @@ describe('info/parsed.ts', () => {
           },
         },
       };
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any -- Test data with incomplete structure
       const standalone = new CompletionInfo(raw as any);
       const entry = assertNonNull(standalone.getKeywordMetadata('testkw'));
       // No nodeInfo provided → description stays null
