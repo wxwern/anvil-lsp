@@ -1,8 +1,9 @@
 import { Diagnostic, DiagnosticSeverity } from "vscode-languageserver";
 import { AnvilDocument } from "../core/AnvilDocument";
 import { AnvilLspUtils } from "../utils/AnvilLspUtils";
-import { AnvilAstNode } from "../core/ast/AnvilAst";
+import { AnvilAstNode, AnvilEventInfo } from "../core/ast/AnvilAst";
 import z from "zod";
+import { AnvilMessageDefSchema, AnvilMessageSyncMode, AnvilMessageSyncModeSchema } from "../core/ast/schema";
 import { astNodeInfo } from "../info/parsed";
 import { diagnosticsLogger } from "../utils/logger";
 
@@ -92,6 +93,113 @@ export class AnvilDescriptionGenerator {
             case "expr": return n.type ?? "expr";
         }
         return n.kind;
+    }
+
+    /**
+     * Formats an AnvilEventInfo as a human-friendly cycle string.
+     * e.g. "cycle 3" or "cycle 1/2/3" for multiple possible delays.
+     */
+    private static formatEventCycle(e: AnvilEventInfo): string {
+        if (e.delays && e.delays.length > 0) {
+            return "cycle " + e.delays.join("/");
+        }
+        return "cycle ?";
+    }
+
+    /**
+     * Returns a human-friendly lifetime description for the given node (or its parents),
+     * or an empty string if no lifetime information is available.
+     */
+    private static describeLifetime(node: AnvilAstNode): string {
+        // Walk up ancestor chain until we find a node with event info
+        let current: AnvilAstNode = node;
+        while (current.event === null) {
+            const parent = current.up() as AnvilAstNode;
+            if (parent === current || parent.isRoot()) {
+                return "";
+            }
+            current = parent;
+        }
+
+        const event = current.event!;
+        const startStr = this.formatEventCycle(event);
+        const sustained = current.sustainedTillEvent;
+
+        if (sustained) {
+            const endStr = this.formatEventCycle(sustained);
+            return `- Executed on \`${startStr}\`\n- Sustained till end of \`${endStr}\`\n`;
+        }
+
+        return `- Executed on \`${startStr}\`\n`;
+    }
+
+    /**
+     * Formats a single AnvilMessageSyncMode as a human-friendly timing phrase.
+     * e.g. "at any time", "every 4 cycle(s) starting at cycle 2",
+     *      "1 cycle(s) after message xyz"
+     */
+    private static formatSyncMode(sync: AnvilMessageSyncMode): string {
+        switch (sync.type) {
+            case "dynamic":
+                return "at any time";
+            case "static":
+                return `every \`${sync.interval}\` cycle(s) starting on \`cycle ${sync.init}\``;
+            case "dependent":
+                return `\`${sync.delay}\` cycle(s) after message \`${sync.msg}\``;
+        }
+    }
+
+    /**
+     * Returns a human-friendly description of the timing contracts for a message_def node,
+     * as a markdown bullet list, or an empty string if the node is not a message_def.
+     */
+    static describeMessageDefContracts(
+        msgNode: AnvilAstNode,
+        context?: "send" | "recv"
+    ): string {
+        const msg = msgNode.resolveAs(AnvilMessageDefSchema);
+        if (!msg) return "";
+
+        const lifetime = msg.sig_types.length === 1 ? msg.sig_types[0].lifetime : null;
+        let lifetimeStr;
+        switch (lifetime?.ending.type) {
+            case "cycles":
+                lifetimeStr = `- Must be sustained for \`${lifetime.ending.value}\` cycle(s)\n`;
+                break;
+            case "message":
+                lifetimeStr = `- Must be sustained for \`${lifetime.ending.value}\`'s lifetime duration`;
+                const offset = lifetime.ending.offset;
+                if (offset) {
+                    lifetimeStr += `, offset by \`${offset}\` cycle(s)`;
+                }
+                lifetimeStr += "\n";
+                break;
+            case "eternal":
+                lifetimeStr = `- Must be sustained indefinitely\n`;
+                break;
+            default:
+                lifetimeStr = "";
+        }
+
+        // Contextual mode: omit the endpoint side label (caller already knows which side they're on)
+        if (context === "send") return `- May send ${this.formatSyncMode(msg.send_sync)}\n` + lifetimeStr;
+        if (context === "recv") return `- May receive ${this.formatSyncMode(msg.recv_sync)}\n` + lifetimeStr;
+
+        // dir is from the left endpoint's perspective:
+        //   "out" -> left sends,  right receives
+        //   "in"  -> left receives, right sends
+        const leftSends  = msg.dir === "out";
+        const senderSide   = leftSends ? "`left`"  : "`right`";
+        const receiverSide = leftSends ? "`right`" : "`left`";
+
+        // Full mode: include endpoint side labels
+        const sendLine = `- ${senderSide} endpoint sends ${this.formatSyncMode(msg.send_sync)}`;
+        const recvLine = `- ${receiverSide} endpoint receives ${this.formatSyncMode(msg.recv_sync)}`;
+        if (leftSends) {
+            return sendLine + "\n" + recvLine + "\n" + lifetimeStr;
+        } else {
+            return recvLine + "\n" + sendLine + "\n" + lifetimeStr;
+        }
     }
 
     /**
@@ -305,6 +413,8 @@ export class AnvilDescriptionGenerator {
             documentation?: boolean;
             /** Definitions referenced by this node. */
             definitions?: boolean;
+            /** Human-friendly lifetime/timing description for this node. */
+            lifetime?: boolean;
             /** Explanations of the node */
             explanations?: boolean;
             /** Code examples from ast-node-info.json. Only shown when explanations is also true. */
@@ -317,10 +427,9 @@ export class AnvilDescriptionGenerator {
         let codeSegment = "";
         let documentationSegment = "";
         let definitionsSegment = "";
+        let lifetimeSegment = "";
         let explanationSegment = "";
         let debugPathSegment = "";
-
-        const kind = this.nodeType(node);
 
         // populate code segment
         if (segments?.code) {
@@ -355,6 +464,50 @@ export class AnvilDescriptionGenerator {
             }
         }
 
+        // populate lifetime segment
+        if (segments?.lifetime) {
+            let lifetimeParts: string[] = [];
+
+            // message_def: show its timing contracts
+            if (node.kind === "message_def") {
+                const contracts = this.describeMessageDefContracts(node);
+                if (contracts) lifetimeParts.push(contracts);
+
+            }
+
+            if (node.kind === "expr") {
+                // send/recv expression — show the contextual contract from the referenced message_def,
+                //                        plus the node's own event timing
+                const type = node.type;
+                const isSend = type === "send" || type === "try_send";
+                const isRecv = type === "recv" || type === "try_recv";
+
+                if (isSend || isRecv) {
+                    const context: "send" | "recv" = isSend ? "send" : "recv";
+                    const defs = node.definitions;
+                    for (const def of defs) {
+                        const defNode = anvilDocument.anvilAst?.node(def);
+                        if (defNode?.satisfiesKind("message_def")) {
+                            const contracts = this.describeMessageDefContracts(defNode, context);
+                            if (contracts) lifetimeParts.push(contracts);
+                            break;
+                        }
+                    }
+                }
+            }
+
+            // All nodes: show event timing if available
+            const lifetimeDesc = this.describeLifetime(node);
+            if (lifetimeDesc) lifetimeParts.push(lifetimeDesc);
+
+            // Merge parts together with a header if there are any
+            if (lifetimeParts.length > 0) {
+                const hasAbove = !!(documentationSegment || codeSegment || definitionsSegment);
+                const sep = hasAbove ? "\n\n---\n\n" : "";
+                lifetimeSegment = sep + "**Lifetime:**\n\n" + lifetimeParts.join("") + "\n";
+            }
+        }
+
         // populate explanation segment
         if (segments?.explanations) {
             const entry = astNodeInfo.getFor(node);
@@ -375,7 +528,7 @@ export class AnvilDescriptionGenerator {
         if (segments?.debug) {
             debugPathSegment += "\n\n---\n\n**DEBUG**\n\n"
             + `**- Node Path:** ${node.nodepath.map(s => `\`${s}\``).join(".")}\n`
-            + `**- Node Kind:** ${kind || "unknown"}\n`
+            + `**- Node Kind:** ${node.kind || "unknown"}/${node.type || "-"}\n`
             + `**- Node Span:** ${node.span ? `${node.span.start.line}:${node.span.start.col}-${node.span.end.line}:${node.span.end.col}` : "none"}\n`
             + `**- Node Defs:** ${node.definitions.length}\n`
             + "\n---\n\n"
@@ -385,7 +538,7 @@ export class AnvilDescriptionGenerator {
             + "\n```\n";
         }
 
-        return codeSegment + documentationSegment + definitionsSegment + explanationSegment + debugPathSegment;
+        return codeSegment + documentationSegment + definitionsSegment + lifetimeSegment + explanationSegment + debugPathSegment;
     }
 
     /**

@@ -336,6 +336,7 @@ connection.onHover(async (params) => {
 				code: true,
 				documentation: true,
 				definitions: true,
+				lifetime: true,
 				explanations: showSyntaxHelp.onHover,
 				examples: showSyntaxHelp.includeExamples,
 				debug: D,
@@ -568,6 +569,7 @@ connection.onCompletionResolve(async (item: CompletionItem) => {
 					code: true,
 					documentation: true,
 					definitions: true,
+					lifetime: true,
 					explanations: includeExplanation,
 					examples: showSyntaxHelp.includeExamples,
 				}) || '';
