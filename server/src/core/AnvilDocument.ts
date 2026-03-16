@@ -102,7 +102,7 @@ export class AnvilDocument {
         return this._anvilErrors;
     }
 
-    public get anvilResultsUpToDate(): boolean {
+    public get isResultsUpToDate(): boolean {
         return this._anvilAst !== null && this._postAstTextEdited.length === 0;
     }
 
@@ -113,7 +113,7 @@ export class AnvilDocument {
     public async compile(settings: AnvilServerSettings): Promise<boolean> {
         if (this._compileLock) {
             const result = await this._compileLock;
-            if (this.anvilResultsUpToDate) {
+            if (this.isResultsUpToDate) {
                 return result;
             }
             // otherwise, we need to recompile to update the AST and clear the post-AST edits

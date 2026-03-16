@@ -250,6 +250,7 @@ documents.onDidClose(e => {
 // LSP FEATURES
 //
 
+
 // Diagnostics
 connection.languages.diagnostics.on(async (params) => {
 	const EMPTY = {
@@ -271,6 +272,8 @@ connection.languages.diagnostics.on(async (params) => {
 		hasDiagnosticRelatedInformationCapability
 			? await AnvilDescriptionGenerator.describeDiagnostics(anvilDocument, settings.maxNumberOfProblems)
 			: [];
+
+	serverLogger.info(`Diagnostics generated. ${diagnostics.length} problems. AST ${anvilDocument.anvilAst ? `available (${anvilDocument.isResultsUpToDate ? 'up-to-date' : 'outdated'}).` : 'not available.'}`);
 
 	connection.languages.inlayHint.refresh();
 
@@ -296,7 +299,7 @@ connection.onHover(async (params) => {
 	if (!anvilDocument) return !D ? null : {
 		contents: {
 			kind: 'markdown',
-			value: 'Hover failed: Anvil document not available'
+			value: '**Error:** No information available (AnvilDocument not available)'
 		}
 	};
 
@@ -306,11 +309,10 @@ connection.onHover(async (params) => {
 	}
 
 	if (!anvilDocument.anvilAst) {
-		serverLogger.info(`AST not yet available for document ${document.uri}`);
 		return !D ? null : {
 			contents: {
 				kind: 'markdown',
-				value: 'AST information for hover not yet available'
+				value: '**Error:** No information available (AST information unavailable)'
 			}
 		};
 	}
@@ -319,11 +321,10 @@ connection.onHover(async (params) => {
 	const node = anvilDocument.getClosestAnvilNodeToLspPosition(position);
 
 	if (!node) {
-		serverLogger.info(`No hover result found`);
 		return !D ? null : {
 			contents: {
 				kind: 'markdown',
-				value: 'No information available (cannot find AST node at position)'
+				value: '**Error:** No information available (cannot find AST node at position)'
 			}
 		};
 	}
@@ -362,7 +363,6 @@ connection.onDefinition(async (params) => {
 
 	const ast = anvilDocument.anvilAst;
 	if (!ast) {
-		serverLogger.info(`AST not yet available for document ${document.uri}`);
 		return null;
 	}
 
@@ -372,7 +372,6 @@ connection.onDefinition(async (params) => {
 	const identifierUnderCursor = anvilDocument.getClosestIdentifierToLspPosition(position);
 
 	if (!node) {
-		serverLogger.info(`No definition result found`);
 		return null;
 	}
 
@@ -400,6 +399,7 @@ connection.onDefinition(async (params) => {
 	});
 });
 
+
 // Type Definitions
 connection.onTypeDefinition(async (params) => {
 	const document = documents.get(params.textDocument.uri);
@@ -416,7 +416,6 @@ connection.onTypeDefinition(async (params) => {
 
 	const ast = anvilDocument.anvilAst;
 	if (!ast) {
-		serverLogger.info(`AST not yet available for document ${document.uri}`);
 		return null;
 	}
 
@@ -426,13 +425,12 @@ connection.onTypeDefinition(async (params) => {
 	const identifierUnderCursor = anvilDocument.getClosestIdentifierToLspPosition(position);
 
 	if (!node) {
-		serverLogger.info(`No type definition result found`);
 		return null;
 	}
 
 	let allDefs = node.definitions;
 	if (!allDefs || allDefs.length === 0) {
-		serverLogger.info(`No definitions found for node at position`);
+		serverLogger.info(`No type definitions found for node at position`);
 		return null;
 	}
 
@@ -464,6 +462,8 @@ connection.onTypeDefinition(async (params) => {
 	});
 });
 
+
+// References
 connection.onReferences(async (params) => {
 	const document = documents.get(params.textDocument.uri);
 	if (document === undefined) return null;
@@ -478,7 +478,6 @@ connection.onReferences(async (params) => {
 	}
 
 	if (!anvilDocument.anvilAst) {
-		serverLogger.info(`AST not yet available for document ${document.uri}`);
 		return null;
 	}
 
@@ -486,13 +485,11 @@ connection.onReferences(async (params) => {
 	const node = anvilDocument.getClosestAnvilNodeToLspPosition(position);
 
 	if (!node) {
-		serverLogger.info(`No reference result found`);
 		return null;
 	}
 
 	const loc = node.absoluteSpan;
 	if (!loc) {
-		serverLogger.info(`Node unexpectedly does not have a valid location`);
 		return null;
 	}
 
@@ -642,10 +639,11 @@ connection.languages.inlayHint.on(async (params) => {
 
 	const inlayHints = AnvilInlayHintGenerator.generateInlayHints(anvilDocument, settings);
 
-	serverLogger.info(`Generated ${inlayHints.length} inlay hint(s) for document ${uri}`);
+	serverLogger.info(`Found ${inlayHints.length} inlay hint(s) for document ${uri}`);
 
 	return inlayHints;
 });
+
 
 //
 // BEGIN
