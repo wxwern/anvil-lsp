@@ -137,9 +137,10 @@ This repository includes a submodule of Anvil, pinned to a version with guarante
 
 ### Development Workflows
 
-On *nix systems, run the build/test scripts in the root of the repository
-to build/test all components (language server, anvil compiler, all editor extensions):
+On *nix systems, run the dev scripts in the root of the repository to format/build/test all components
+(language server, anvil compiler, all editor extensions):
 ```bash
+./format.sh
 ./build.sh
 ./test.sh
 ```

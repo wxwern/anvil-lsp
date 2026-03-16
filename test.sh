@@ -66,7 +66,7 @@ test-vim() {
 }
 
 if [[ -z "$@" ]]; then
-    echo "Building all components..."
+    echo "Testing all components..."
     test-anvil
     test-server
     test-vscode
