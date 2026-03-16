@@ -127,7 +127,7 @@ export class AnvilDocument {
             const filePath = this._textDocument.uri.replace('file://', '');
             const fileData = { [filePath]: this._textDocument.getText() };
 
-            const compiler = new AnvilCompiler(settings.executablePath, settings.projectRoot);
+            const compiler = new AnvilCompiler(settings.projectRoot, settings.executablePath);
 
             // backup pre-compile state
             const prevAst = this._anvilAst;
