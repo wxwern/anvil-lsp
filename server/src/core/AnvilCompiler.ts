@@ -36,6 +36,7 @@ import * as path from 'path';
 import { spawn } from 'child_process';
 import { AnvilAst } from './ast/AnvilAst';
 import { AnvilCompUnit, AnvilSpan, AnvilPosition } from './ast/schema';
+import { compilerLogger } from '../utils/logger';
 
 /**
  * JSON trace structure from anvil compiler
@@ -178,8 +179,8 @@ export class AnvilCompiler {
         const hasInMemoryData = fileData[files[0]] !== undefined;
 
         if (process.env.DEBUG) {
-            console.log('Input files:', files);
-            console.log();
+            compilerLogger.info('Input files:', files);
+            compilerLogger.info('');
         }
 
         const args = hasInMemoryData ? ['-ast', '-json', '-stdin', files[0]] : ['-ast', '-json', files[0]];
@@ -198,9 +199,9 @@ export class AnvilCompiler {
                 if (jsonOutput.ast) {
                     try {
                         astOutput = AnvilAst.parse(this.projectRoot, jsonOutput.ast);
-                        console.log('Successfully parsed AST output from Anvil compiler');
+                        compilerLogger.info('Successfully parsed AST output from Anvil compiler');
                     } catch (astParseError) {
-                        console.error("Error parsing AST output from Anvil compiler:", astParseError);
+                        compilerLogger.error("Error parsing AST output from Anvil compiler:", astParseError);
                         const truncatedPreview = JSON.stringify(jsonOutput.ast).slice(0, 1000);
                         errors.push({
                             type: 'error',
@@ -225,7 +226,7 @@ export class AnvilCompiler {
                 };
             } catch (parseError) {
                 // If JSON parsing fails, treat as compilation error
-                console.error("Error parsing compiler output:", parseError);
+                compilerLogger.error("Error parsing compiler output:", parseError);
                 return {
                     success: false,
                     errors: [{
@@ -243,7 +244,7 @@ export class AnvilCompiler {
             }
 
         } catch (error) {
-            console.error("Error spawning anvil process:", error);
+            compilerLogger.error("Error spawning anvil process:", error);
 
             return {
                 success: false,
@@ -269,7 +270,7 @@ export class AnvilCompiler {
     ): Promise<{ stdout: string; stderr: string; exitCode: number | null }> {
 
         return new Promise((resolve, reject) => {
-            console.log(`Executing Anvil: ${this.anvilBinaryPath} ${args.join(' ')}`);
+            compilerLogger.info(`Executing Anvil: ${this.anvilBinaryPath} ${args.join(' ')}`);
             const proc = spawn(this.anvilBinaryPath, args, { cwd: this.projectRoot, stdio: 'pipe' });
 
             let stdout = '';
@@ -284,7 +285,7 @@ export class AnvilCompiler {
             });
 
             proc.on('close', (code) => {
-                console.log(`Anvil process exited with code ${code}`);
+                compilerLogger.info(`Anvil process exited with code ${code}`);
                 resolve({ stdout, stderr, exitCode: code });
             });
 

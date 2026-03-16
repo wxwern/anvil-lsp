@@ -4,6 +4,7 @@ import { AnvilDocument } from "../core/AnvilDocument";
 import { AnvilDescriptionGenerator } from "./AnvilDescriptionGenerator";
 import { AnvilCompletionGenerator } from "./AnvilCompletionGenerator";
 import { AnvilChannelClassSchema, AnvilProcDefBodyNativeSchema, AnvilProcSchema, AnvilType } from "../core/ast/schema";
+import { signatureHelpLogger } from "../utils/logger";
 
 export class AnvilSignatureHelpGenerator {
 
@@ -135,11 +136,11 @@ export class AnvilSignatureHelpGenerator {
 
     const match = regex.exec(prefix);
     if (!match) {
-      console.log('[SignatureHelp] spawn heuristic did not match.');
+      signatureHelpLogger.info('Spawn heuristic did not match.');
       return null;
     }
 
-    console.log('[SignatureHelp] spawn heuristic matched!');
+    signatureHelpLogger.info('Spawn heuristic matched!');
 
     const procNameWithParams = match[2]; // e.g. "Alu<logic[4]>" or "Alu"
     // Extract base proc name (strip type params).
@@ -159,7 +160,7 @@ export class AnvilSignatureHelpGenerator {
     }
 
     if (!procNode) {
-      console.log(`[SignatureHelp] spawn: proc "${procBaseName}" not found in AST.`);
+      signatureHelpLogger.info(`Spawn: proc "${procBaseName}" not found in AST.`);
       return null;
     }
 
@@ -202,11 +203,11 @@ export class AnvilSignatureHelpGenerator {
 
     const match = regex.exec(prefix);
     if (!match) {
-      console.log('[SignatureHelp] call heuristic did not match.');
+      signatureHelpLogger.info('Call heuristic did not match.');
       return null;
     }
 
-    console.log('[SignatureHelp] call heuristic matched!');
+    signatureHelpLogger.info('Call heuristic matched!');
 
     const funcName      = match[2]; // e.g. "add"
     const textAfterOpen = match[3] ?? ''; // text between '(' and cursor
@@ -223,7 +224,7 @@ export class AnvilSignatureHelpGenerator {
     }
 
     if (!funcNode) {
-      console.log(`[SignatureHelp] call: func "${funcName}" not found in AST.`);
+      signatureHelpLogger.info(`Call: func "${funcName}" not found in AST.`);
       return null;
     }
 
@@ -266,11 +267,11 @@ export class AnvilSignatureHelpGenerator {
 
     const match = regex.exec(prefix);
     if (!match) {
-      console.log('[SignatureHelp] send heuristic did not match.');
+      signatureHelpLogger.info('Send heuristic did not match.');
       return null;
     }
 
-    console.log('[SignatureHelp] send heuristic matched!');
+    signatureHelpLogger.info('Send heuristic matched!');
 
     const endpointName = match[2];
     const messageName  = match[3];
@@ -286,7 +287,7 @@ export class AnvilSignatureHelpGenerator {
     );
 
     if (!procNode) {
-      console.log('[SignatureHelp] send: no enclosing proc_def found.');
+      signatureHelpLogger.info('Send: no enclosing proc_def found.');
       return null;
     }
 
@@ -306,7 +307,7 @@ export class AnvilSignatureHelpGenerator {
       channels.find(c => c.names.includes(endpointName));
 
     if (!endpointNode) {
-      console.log(`[SignatureHelp] send: endpoint "${endpointName}" not found in proc scope.`);
+      signatureHelpLogger.info(`Send: endpoint "${endpointName}" not found in proc scope.`);
       return null;
     }
 
@@ -317,7 +318,7 @@ export class AnvilSignatureHelpGenerator {
       .find(c => !!c);
 
     if (!channelClassDef) {
-      console.log('[SignatureHelp] send: channel class def not found.');
+      signatureHelpLogger.info('Send: channel class def not found.');
       return null;
     }
 
@@ -338,7 +339,7 @@ export class AnvilSignatureHelpGenerator {
     );
 
     if (!messageNode) {
-      console.log(`[SignatureHelp] send: message "${messageName}" (${dir}) not found in channel class.`);
+      signatureHelpLogger.info(`Send: message "${messageName}" (${dir}) not found in channel class.`);
       return null;
     }
 
@@ -375,11 +376,11 @@ export class AnvilSignatureHelpGenerator {
 
     const match = regex.exec(prefix);
     if (!match) {
-      console.log('[SignatureHelp] record init heuristic did not match.');
+      signatureHelpLogger.info('Record init heuristic did not match.');
       return null;
     }
 
-    console.log('[SignatureHelp] record init heuristic matched!');
+    signatureHelpLogger.info('Record init heuristic matched!');
 
     const typeName      = match[2];
     const textAfterOpen = match[4] ?? '';
@@ -403,7 +404,7 @@ export class AnvilSignatureHelpGenerator {
     }
 
     if (!typeDef) {
-      console.log(`[SignatureHelp] record init: type "${typeName}" not found or not a record.`);
+      signatureHelpLogger.info(`Record init: type "${typeName}" not found or not a record.`);
       return null;
     }
 
@@ -421,7 +422,7 @@ export class AnvilSignatureHelpGenerator {
     });
 
     if (parameters.length === 0) {
-      console.log('[SignatureHelp] record init: no fields found.');
+      signatureHelpLogger.info('Record init: no fields found.');
       return null;
     }
 

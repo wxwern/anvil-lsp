@@ -4,6 +4,7 @@ import { AnvilAstNode, AnvilAstNodePath } from "../core/ast/AnvilAst";
 import { AnvilDocument } from "../core/AnvilDocument";
 import { AnvilChannelClassSchema, AnvilProcSchema, AnvilTypeSchema } from "../core/ast/schema";
 import { completionInfo } from "../info/parsed";
+import { completionLogger } from "../utils/logger";
 
 export class AnvilCompletionDetail {
   private constructor(
@@ -117,7 +118,7 @@ export class AnvilCompletionGenerator {
 
     const lastNChars = 20;
     const logSample = prefix.slice(-lastNChars);
-    console.log(`Prefix at position ${position.line}:${position.character} is: "${logSample.length < lastNChars ? logSample : '...' + logSample}"`);
+    completionLogger.info(`Prefix at position ${position.line}:${position.character} is: "${logSample.length < lastNChars ? logSample : '...' + logSample}"`);
 
     return prefix;
   }
@@ -190,15 +191,15 @@ export class AnvilCompletionGenerator {
 
     // Heuristic matches when cursor is at: "*register_name"
     const regex = new RegExp(`${this.SPACER_REGEX_GROUP}\\*${this.IDENTIFIER_REGEX_GROUP}?$`, "g");
-    console.log('Checking register completion heuristic with regex:', regex);
+    completionLogger.info('Checking register completion heuristic with regex:', regex);
     const match = regex.exec(prefix);
 
     if (!match) {
-      console.log('Register completion heuristic did not match.');
+      completionLogger.info('Register completion heuristic did not match.');
       return null;
     }
 
-    console.log('Register completion heuristic matched!');
+    completionLogger.info('Register completion heuristic matched!');
     const regPartialNamePrefix = match[2] || '';
     const ast = document.anvilAst;
     if (!ast) return null;
@@ -229,15 +230,15 @@ export class AnvilCompletionGenerator {
 
     // Heuristic matches when cursor is at: "set register_name :=" excluding the := operator.
     const regex = new RegExp(`${this.SPACER_REGEX_GROUP}set\\s+${this.IDENTIFIER_REGEX_GROUP}?$`, "g");
-    console.log('Checking write register completion heuristic with regex:', regex);
+    completionLogger.info('Checking write register completion heuristic with regex:', regex);
     const match = regex.exec(prefix);
 
     if (!match) {
-      console.log('Write register completion heuristic did not match.');
+      completionLogger.info('Write register completion heuristic did not match.');
       return null;
     }
 
-    console.log('Write register completion heuristic matched!');
+    completionLogger.info('Write register completion heuristic matched!');
     const regPartialNamePrefix = match[2] || '';
     const ast = document.anvilAst;
     if (!ast) return null;
@@ -272,22 +273,22 @@ export class AnvilCompletionGenerator {
 
     // Heuristic matches when cursor is at: "send/recv endpoint_name.message_name(" excluding the trailing "("
     const regex = new RegExp(`${this.SPACER_REGEX_GROUP}(send|recv)\\s+(${this.IDENTIFIER_REGEX_GROUP}(\\.(${this.IDENTIFIER_REGEX_GROUP})?)?)?$`, "g");
-    console.log('Checking send/recv completion heuristic with regex:', regex);
+    completionLogger.info('Checking send/recv completion heuristic with regex:', regex);
     const match = regex.exec(prefix);
     if (!match) {
-      console.log('Send/recv completion heuristic did not match.');
+      completionLogger.info('Send/recv completion heuristic did not match.');
       return null;
     }
 
-    console.log('Send/recv completion heuristic matched!');
-    console.log(match);
+    completionLogger.info('Send/recv completion heuristic matched!');
+    completionLogger.info(match);
     const isSend = match[2] === 'send';
 
     const endpointPartialNamePrefix = match[4] || '';
     const hasDot = !!match[5];
     const messagePartialNamePrefix = match[6] || '';
 
-    console.log(`Parsed < | isSend: ${isSend} | "${endpointPartialNamePrefix}" | dot: ${hasDot} | "${messagePartialNamePrefix}" >`);
+    completionLogger.info(`Parsed < | isSend: ${isSend} | "${endpointPartialNamePrefix}" | dot: ${hasDot} | "${messagePartialNamePrefix}" >`);
 
     const ast = document.anvilAst;
     if (!ast) return null;
@@ -321,7 +322,7 @@ export class AnvilCompletionGenerator {
 
     const endpointCandidates = [...matchingEndpoints, ...matchingChannels];
 
-    console.log(`Found ${endpointCandidates.length} endpoint candidates for prefix "${endpointPartialNamePrefix}"`);
+    completionLogger.info(`Found ${endpointCandidates.length} endpoint candidates for prefix "${endpointPartialNamePrefix}"`);
 
     if (!messagePartialNamePrefix && !hasDot) {
       // If we haven't completed the endpoint, return endpoints.
@@ -359,7 +360,7 @@ export class AnvilCompletionGenerator {
       messageCompletions.push(...matchingMessages);
     }
 
-    console.log(`Found ${messageCompletions.length} message candidates for prefix "${messagePartialNamePrefix}"`);
+    completionLogger.info(`Found ${messageCompletions.length} message candidates for prefix "${messagePartialNamePrefix}"`);
 
     return messageCompletions.map(m => AnvilCompletionDetail.snippetFromNode(
       m.name!,
@@ -382,9 +383,9 @@ export class AnvilCompletionGenerator {
       "g"
     );
     const match = regex.exec(prefix);
-    console.log('Checking timing annotation completion heuristic with regex:', regex);
+    completionLogger.info('Checking timing annotation completion heuristic with regex:', regex);
     if (!match) {
-      console.log('Timing annotation completion heuristic did not match.');
+      completionLogger.info('Timing annotation completion heuristic did not match.');
       return null;
     }
 
@@ -400,12 +401,12 @@ export class AnvilCompletionGenerator {
     const rangeEndAnnotPrefix = match[12] || '';
 
     if (!hasFirstAnnot) {
-      console.log('Timing annotation completion heuristic did not match (first annotation not yet detected).');
+      completionLogger.info('Timing annotation completion heuristic did not match (first annotation not yet detected).');
       return null;
     }
 
-    console.log(`Parsed < | hasFirst: ${hasFirstAnnot} | "${firstAnnotPrefix}" | hasRangeStart: ${hasRangeStartAnnot} | "${rangeStartAnnotPrefix}" | hasRangeEnd: ${hasRangeEndAnnot} | "${rangeEndAnnotPrefix}" >`);
-    console.log('Timing annotation completion heuristic matched!');
+    completionLogger.info(`Parsed < | hasFirst: ${hasFirstAnnot} | "${firstAnnotPrefix}" | hasRangeStart: ${hasRangeStartAnnot} | "${rangeStartAnnotPrefix}" | hasRangeEnd: ${hasRangeEndAnnot} | "${rangeEndAnnotPrefix}" >`);
+    completionLogger.info('Timing annotation completion heuristic matched!');
 
     let completionItems: AnvilCompletionDetail[] = [];
 
@@ -551,15 +552,15 @@ export class AnvilCompletionGenerator {
     // Heuristic matches when cursor is at:
     // - "(reg/chan/left/right) typename : typedef"
     const regex = new RegExp(`^\\s*(reg|left|right|let)\\s+${this.IDENTIFIER_REGEX_GROUP}\\s*(:)?\\s*(\\()?${this.TYPEDEF_REGEX_GROUP}?$`, "g");
-    console.log('Checking typedef completion heuristic with regex:', regex);
+    completionLogger.info('Checking typedef completion heuristic with regex:', regex);
     const match = regex.exec(prefix);
 
     if (!match) {
-      console.log('Typedef completion heuristic did not match.');
+      completionLogger.info('Typedef completion heuristic did not match.');
       return null;
     }
 
-    console.log('Typedef completion heuristic matched!');
+    completionLogger.info('Typedef completion heuristic matched!');
     const keyword = match[1];
     const hasColon = !!match[3];
     const hasOpenParen = !!match[4];
@@ -570,7 +571,7 @@ export class AnvilCompletionGenerator {
     if (!ast) return null;
 
     if (!hasColon) {
-      console.log('Intentionally returning nothing (: not yet entered).');
+      completionLogger.info('Intentionally returning nothing (: not yet entered).');
       return [];
     }
 
@@ -595,7 +596,7 @@ export class AnvilCompletionGenerator {
       allResults.forEach(r => r.insertText = ' ' + r.insertText);
     }
 
-    console.log(`Found ${allResults.length} typedef candidates for prefix "${typedefPartialNamePrefix}"`);
+    completionLogger.info(`Found ${allResults.length} typedef candidates for prefix "${typedefPartialNamePrefix}"`);
     return allResults;
 
   }
@@ -607,15 +608,15 @@ export class AnvilCompletionGenerator {
 
     // Heuristic matches when cursor is at: "typename<" for snippet completion
     const regex = new RegExp(`${this.SPACER_REGEX_GROUP}${this.IDENTIFIER_REGEX_GROUP}<$`, "g");
-    console.log('Checking typedef parameter completion heuristic with regex:', regex);
+    completionLogger.info('Checking typedef parameter completion heuristic with regex:', regex);
     const match = regex.exec(prefix);
 
     if (!match) {
-      console.log('Typedef parameter completion heuristic did not match.');
+      completionLogger.info('Typedef parameter completion heuristic did not match.');
       return null;
     }
 
-    console.log('Typedef parameter completion heuristic matched!');
+    completionLogger.info('Typedef parameter completion heuristic matched!');
     const typeName = match[2];
     const paramPartialPrefix = match[3] || '';
     const ast = document.anvilAst;
@@ -628,7 +629,7 @@ export class AnvilCompletionGenerator {
     ).filter(n => n.kind === 'type_def');
 
     if (typeDefs.length === 0) {
-      console.log(`No type definitions found for type name "${typeName}"`);
+      completionLogger.info(`No type definitions found for type name "${typeName}"`);
       return [];
     }
 
@@ -638,7 +639,7 @@ export class AnvilCompletionGenerator {
     const params = typeDef.down("data_type").down("params").children;
     const matchingParams = params.map(p => p.name).filter(n => !!n);
 
-    console.log(`Found ${matchingParams.length} typedef parameter candidates for prefix "${paramPartialPrefix}"`);
+    completionLogger.info(`Found ${matchingParams.length} typedef parameter candidates for prefix "${paramPartialPrefix}"`);
 
     if (matchingParams.length === 0) {
       return [];
@@ -662,15 +663,15 @@ export class AnvilCompletionGenerator {
 
     // Heuristic matches when cursor is at: "spawn proc_name(" excluding the trailing "("
     const regex = new RegExp(`${this.SPACER_REGEX_GROUP}spawn\\s+${this.TYPEDEF_REGEX_GROUP}?$`, "g");
-    console.log('Checking spawn completion heuristic with regex:', regex);
+    completionLogger.info('Checking spawn completion heuristic with regex:', regex);
 
     const match = regex.exec(prefix);
     if (!match) {
-      console.log('Spawn completion heuristic did not match.');
+      completionLogger.info('Spawn completion heuristic did not match.');
       return null;
     }
 
-    console.log('Spawn completion heuristic matched!');
+    completionLogger.info('Spawn completion heuristic matched!');
     const procPartialNamePrefix = match[2] || '';
     const ast = document.anvilAst;
     if (!ast) return null;
@@ -700,7 +701,7 @@ export class AnvilCompletionGenerator {
       );
     });
 
-    console.log(`Found ${results.length} proc candidates for prefix "${procPartialNamePrefix}"`);
+    completionLogger.info(`Found ${results.length} proc candidates for prefix "${procPartialNamePrefix}"`);
     return results;
   }
 
@@ -711,15 +712,15 @@ export class AnvilCompletionGenerator {
 
     // Heuristic matches when cursor is at: "call func_name" excluding the trailing "("
     const regex = new RegExp(`${this.SPACER_REGEX_GROUP}call\\s+${this.IDENTIFIER_REGEX_GROUP}?$`, "g");
-    console.log('Checking call completion heuristic with regex:', regex);
+    completionLogger.info('Checking call completion heuristic with regex:', regex);
 
     const match = regex.exec(prefix);
     if (!match) {
-      console.log('Call completion heuristic did not match.');
+      completionLogger.info('Call completion heuristic did not match.');
       return null;
     }
 
-    console.log('Call completion heuristic matched!');
+    completionLogger.info('Call completion heuristic matched!');
     const funcPartialNamePrefix = match[2] || '';
     const ast = document.anvilAst;
     if (!ast) return null;
@@ -745,7 +746,7 @@ export class AnvilCompletionGenerator {
       );
     });
 
-    console.log(`Found ${results.length} func candidates for prefix "${funcPartialNamePrefix}"`);
+    completionLogger.info(`Found ${results.length} func candidates for prefix "${funcPartialNamePrefix}"`);
     return results;
   }
 
@@ -756,14 +757,14 @@ export class AnvilCompletionGenerator {
 
     // Heuristic matches when cursor is at: "typename::"
     const regex = new RegExp(`${this.SPACER_REGEX_GROUP}${this.TYPEDEF_REGEX_GROUP}(:(:({|${this.IDENTIFIER_REGEX_GROUP})?)?)?$`, "g");
-    console.log('Checking construct syntax completion heuristic with regex:', regex);
+    completionLogger.info('Checking construct syntax completion heuristic with regex:', regex);
     const match = regex.exec(prefix);
     if (!match) {
-      console.log('Construct syntax completion heuristic did not match.');
+      completionLogger.info('Construct syntax completion heuristic did not match.');
       return null;
     }
 
-    console.log('Construct syntax completion heuristic matched!');
+    completionLogger.info('Construct syntax completion heuristic matched!');
     const typeName = match[2];
     const memberPartialPrefix = match[3] || '';
     const ast = document.anvilAst;
@@ -778,7 +779,7 @@ export class AnvilCompletionGenerator {
     .filter(n => !!n);
 
     if (typeDefs.length === 0) {
-      console.log(`No type definitions found for type name "${typeName}"`);
+      completionLogger.info(`No type definitions found for type name "${typeName}"`);
       return memberPartialPrefix.startsWith(':') ? [] : null;
     }
 
@@ -793,7 +794,7 @@ export class AnvilCompletionGenerator {
           const previewTemplate = '::{' + fieldNames.map(n => `${n} = ...`).join('; ') + '}';
           let fieldTemplate = '::{' + fieldNames.map((n, i) => `${n} = \${${i + 1}}`).join('; ') + '}'
 
-          console.log(`Found ${fieldNames.length} field candidates for prefix "${memberPartialPrefix}"`);
+          completionLogger.info(`Found ${fieldNames.length} field candidates for prefix "${memberPartialPrefix}"`);
 
           if (!fieldTemplate.startsWith(memberPartialPrefix)) {
             continue;
@@ -814,7 +815,7 @@ export class AnvilCompletionGenerator {
             .filter(v => v.name)
             .filter(v => ('::' + v.name).startsWith(memberPartialPrefix));
 
-          console.log(`Found ${matchingVariants.length} variant candidates for prefix "${memberPartialPrefix}"`);
+          completionLogger.info(`Found ${matchingVariants.length} variant candidates for prefix "${memberPartialPrefix}"`);
 
           return matchingVariants.map(v => AnvilCompletionDetail.snippetFromNode(
             v.name!,
@@ -827,7 +828,7 @@ export class AnvilCompletionGenerator {
           ));
         }
         default: {
-          console.log(`Type definition "${typeName}" is not a record or variant, no construct syntax completions available.`);
+          completionLogger.info(`Type definition "${typeName}" is not a record or variant, no construct syntax completions available.`);
           break;
         }
       }

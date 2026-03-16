@@ -27,6 +27,7 @@ import { AnvilDescriptionGenerator } from './generators/AnvilDescriptionGenerato
 import { AnvilCompletionGenerator} from './generators/AnvilCompletionGenerator';
 import { AnvilSignatureHelpGenerator } from './generators/AnvilSignatureHelpGenerator';
 import { AnvilAstNode, AnvilAstNodePath, AnvilEventInfo } from './core/ast/AnvilAst';
+import { serverLogger } from './utils/logger';
 
 //
 // INITIAL SETUP
@@ -107,7 +108,7 @@ connection.onInitialized(() => {
 	}
 	if (hasWorkspaceFolderCapability) {
 		connection.workspace.onDidChangeWorkspaceFolders(_event => {
-			connection.console.log('Workspace folder change event received.');
+			serverLogger.info('Workspace folder change event received.');
 		});
 	}
 });
@@ -174,7 +175,7 @@ const documentSubscribers = {
 // Monitor changes to files and configuration
 connection.onDidChangeWatchedFiles(_change => {
 	// Monitored files have change in VSCode
-	connection.console.log('We received a miscellaneous file change event');
+	serverLogger.info('We received a miscellaneous file change event');
 
 	// Observe if there's anvil files updated outside
 	let hasChanges = false;
@@ -186,15 +187,15 @@ connection.onDidChangeWatchedFiles(_change => {
 
 		switch (change.type) {
 			case FileChangeType.Created:
-				connection.console.log(`File created: ${change.uri}`);
+				serverLogger.info(`File created: ${change.uri}`);
 				hasChanges = true;
 				break;
 			case FileChangeType.Changed:
-				connection.console.log(`File changed: ${change.uri}`);
+				serverLogger.info(`File changed: ${change.uri}`);
 				hasChanges = true;
 				break;
 			case FileChangeType.Deleted:
-				connection.console.log(`File deleted: ${change.uri}`);
+				serverLogger.info(`File deleted: ${change.uri}`);
 				hasChanges = true;
 				break;
 		}
@@ -208,7 +209,7 @@ connection.onDidChangeWatchedFiles(_change => {
 documentSubscribers.onDidOpenTextDocument = _e =>
 	connection.onDidOpenTextDocument(e => {
 		const document = e.textDocument;
-		connection.console.log(`Document opened: ${document.uri}`);
+		serverLogger.info(`Document opened: ${document.uri}`);
 		documentAnvilManagers.get(document.uri); // preload AnvilDocument for the opened document
 
 		_e(e);
@@ -217,7 +218,7 @@ documentSubscribers.onDidOpenTextDocument = _e =>
 documentSubscribers.onDidChangeTextDocument = _e =>
 	connection.onDidChangeTextDocument(e => {
 		const anvilDocument = documentAnvilManagers.get(e.textDocument.uri);
-		connection.console.log(`Document ${e.textDocument.uri} changed with ${e.contentChanges.length} content changes.`);
+		serverLogger.info(`Document ${e.textDocument.uri} changed with ${e.contentChanges.length} content changes.`);
 		anvilDocument?.syncTextEdits(e.contentChanges);
 
 		_e(e);
@@ -282,7 +283,7 @@ connection.languages.diagnostics.on(async (params) => {
 
 // Hover
 connection.onHover(async (params) => {
-	console.log('Hover event received at position', params.position, 'in document', params.textDocument.uri);
+	serverLogger.info('Hover event received at position', params.position, 'in document', params.textDocument.uri);
 
 	const document = documents.get(params.textDocument.uri);
 	if (document === undefined) return null;
@@ -305,7 +306,7 @@ connection.onHover(async (params) => {
 	}
 
 	if (!anvilDocument.anvilAst) {
-		console.log(`AST not yet available for document ${document.uri}`);
+		serverLogger.info(`AST not yet available for document ${document.uri}`);
 		return !D ? null : {
 			contents: {
 				kind: 'markdown',
@@ -318,7 +319,7 @@ connection.onHover(async (params) => {
 	const node = anvilDocument.getClosestAnvilNodeToLspPosition(position);
 
 	if (!node) {
-		console.log(`No hover result found`);
+		serverLogger.info(`No hover result found`);
 		return !D ? null : {
 			contents: {
 				kind: 'markdown',
@@ -361,7 +362,7 @@ connection.onDefinition(async (params) => {
 
 	const ast = anvilDocument.anvilAst;
 	if (!ast) {
-		console.log(`AST not yet available for document ${document.uri}`);
+		serverLogger.info(`AST not yet available for document ${document.uri}`);
 		return null;
 	}
 
@@ -371,13 +372,13 @@ connection.onDefinition(async (params) => {
 	const identifierUnderCursor = anvilDocument.getClosestIdentifierToLspPosition(position);
 
 	if (!node) {
-		console.log(`No definition result found`);
+		serverLogger.info(`No definition result found`);
 		return null;
 	}
 
 	let allDefs = node.definitions;
 	if (!allDefs || allDefs.length === 0) {
-		console.log(`No definitions found for node at position`);
+		serverLogger.info(`No definitions found for node at position`);
 		return null;
 	}
 
@@ -387,7 +388,7 @@ connection.onDefinition(async (params) => {
 
 	const defs = updatedDefs.length > 0 ? updatedDefs : allDefs;
 
-	console.log(`Found ${defs.length} definition(s) for node at position`);
+	serverLogger.info(`Found ${defs.length} definition(s) for node at position`);
 
 	return defs.map(def => {
 		return {
@@ -415,7 +416,7 @@ connection.onTypeDefinition(async (params) => {
 
 	const ast = anvilDocument.anvilAst;
 	if (!ast) {
-		console.log(`AST not yet available for document ${document.uri}`);
+		serverLogger.info(`AST not yet available for document ${document.uri}`);
 		return null;
 	}
 
@@ -425,13 +426,13 @@ connection.onTypeDefinition(async (params) => {
 	const identifierUnderCursor = anvilDocument.getClosestIdentifierToLspPosition(position);
 
 	if (!node) {
-		console.log(`No type definition result found`);
+		serverLogger.info(`No type definition result found`);
 		return null;
 	}
 
 	let allDefs = node.definitions;
 	if (!allDefs || allDefs.length === 0) {
-		console.log(`No definitions found for node at position`);
+		serverLogger.info(`No definitions found for node at position`);
 		return null;
 	}
 
@@ -441,11 +442,11 @@ connection.onTypeDefinition(async (params) => {
 	});
 
 	if (typeDefs.length === 0) {
-		console.log(`No type definitions found for node at position`);
+		serverLogger.info(`No type definitions found for node at position`);
 		return null;
 	}
 
-	console.log(`Found ${typeDefs.length} type definition(s) for node at position`);
+	serverLogger.info(`Found ${typeDefs.length} type definition(s) for node at position`);
 
 	return typeDefs.map(def => {
 		return {
@@ -471,7 +472,7 @@ connection.onReferences(async (params) => {
 	}
 
 	if (!anvilDocument.anvilAst) {
-		console.log(`AST not yet available for document ${document.uri}`);
+		serverLogger.info(`AST not yet available for document ${document.uri}`);
 		return null;
 	}
 
@@ -479,23 +480,23 @@ connection.onReferences(async (params) => {
 	const node = anvilDocument.getClosestAnvilNodeToLspPosition(position);
 
 	if (!node) {
-		console.log(`No reference result found`);
+		serverLogger.info(`No reference result found`);
 		return null;
 	}
 
 	const loc = node.absoluteSpan;
 	if (!loc) {
-		console.log(`Node unexpectedly does not have a valid location`);
+		serverLogger.info(`Node unexpectedly does not have a valid location`);
 		return null;
 	}
 
 	const refs = anvilDocument.anvilAst?.referencesTo(loc);
 	if (!refs || refs.length === 0) {
-		console.log(`No references found for node at position`);
+		serverLogger.info(`No references found for node at position`);
 		return null;
 	}
 
-	console.log(`Found ${refs.length} reference(s) for node at position`);
+	serverLogger.info(`Found ${refs.length} reference(s) for node at position`);
 
 	return refs.map(ref => {
 		return {
@@ -513,14 +514,14 @@ connection.onCompletion(async (params) => {
 
 	const anvilDocument = documentAnvilManagers.get(params.textDocument.uri);
 	if (!anvilDocument) {
-		console.log(`Completion request received for document ${params.textDocument.uri}, but AnvilDocument is not available.`);
+		serverLogger.info(`Completion request received for document ${params.textDocument.uri}, but AnvilDocument is not available.`);
 		return [];
 	}
 
 	const completionDetails = AnvilCompletionGenerator.getCompletions(params.position, anvilDocument);
 	const settings = await documentSettings.get(params.textDocument.uri);
 
-	console.log(`Found ${completionDetails.length} completion(s) for the current context.`);
+	serverLogger.info(`Found ${completionDetails.length} completion(s) for the current context.`);
 
 	return completionDetails.map(c => c.lspCompletionItem({ allowOOOSnippet: settings.snippets?.fancy }));
 });
@@ -592,7 +593,7 @@ connection.onCompletionResolve(async (item: CompletionItem) => {
 connection.onSignatureHelp(async (params) => {
 	const anvilDocument = documentAnvilManagers.get(params.textDocument.uri);
 	if (!anvilDocument) {
-		console.log(`Signature help request received for document ${params.textDocument.uri}, but AnvilDocument is not available.`);
+		serverLogger.info(`Signature help request received for document ${params.textDocument.uri}, but AnvilDocument is not available.`);
 		return null;
 	}
 
@@ -602,11 +603,11 @@ connection.onSignatureHelp(async (params) => {
 	}
 
 	if (!anvilDocument.anvilAst) {
-		console.log(`AST not yet available for signature help in document ${params.textDocument.uri}`);
+		serverLogger.info(`AST not yet available for signature help in document ${params.textDocument.uri}`);
 		return null;
 	}
 
-	console.log(`Signature help requested at position ${params.position.line}:${params.position.character}`);
+	serverLogger.info(`Signature help requested at position ${params.position.line}:${params.position.character}`);
 
 	const result = AnvilSignatureHelpGenerator.getSignatureHelp(
 		params.position,
@@ -614,7 +615,7 @@ connection.onSignatureHelp(async (params) => {
 		getAnvilDocumentForNode,
 	);
 
-	console.log(`Signature help result: ${result ? `${result.signatures.length} signature(s)` : 'null'}`);
+	serverLogger.info(`Signature help result: ${result ? `${result.signatures.length} signature(s)` : 'null'}`);
 
 	return result;
 });
@@ -637,7 +638,7 @@ connection.languages.inlayHint.on(async (params) => {
 	}
 
 	if (!anvilDocument.anvilAst) {
-		console.log(`AST not yet available for document ${uri}`);
+		serverLogger.info(`AST not yet available for document ${uri}`);
 		return [];
 	}
 
@@ -689,7 +690,7 @@ connection.languages.inlayHint.on(async (params) => {
 
 	maxTextLen = Math.max(8, Math.pow(2, Math.ceil(Math.log2(maxTextLen + markerLen))));
 
-	console.log(`Found inlay hints at ${Object.keys(inlineInject)} for document ${uri}`);
+	serverLogger.info(`Found inlay hints at ${Object.keys(inlineInject)} for document ${uri}`);
 
 	const inlineRanges: [number, string][] = [];
 	for (let line = 0; line < lineCount; line++) {

@@ -9,6 +9,7 @@ import {
   type AnvilSpan,
   type AnvilCompUnit,
 } from "./schema";
+import { astLogger } from "../../utils/logger";
 
 
 
@@ -417,7 +418,7 @@ export class AnvilAstNode<T = any, U extends AnvilAstNode | unknown = unknown> {
       }
 
       const parseResult = zodKind?.safeParse(inputKind).success;
-      console.log(`Rapid schema check for node ${this} on field "${fieldName}" with input "${inputKind}" against schema ${zodKind} success: ${parseResult}`);
+      astLogger.info(`Rapid schema check for node ${this} on field "${fieldName}" with input "${inputKind}" against schema ${zodKind} success: ${parseResult}`);
       return !!parseResult;
     }
 
@@ -761,7 +762,7 @@ export class AnvilAst {
       this.orderedLocations.set(filename, []);
 
       const mappedCount = this.deepMapNode(rootNode.resolve(), fsBasepath, filename, []);
-      console.log(`Processed and mapped ${mappedCount} nodes for file ${unit.file_name}`);
+      astLogger.info(`Processed and mapped ${mappedCount} nodes for file ${unit.file_name}`);
 
       this.sortLocations(filename);
     }
@@ -818,10 +819,10 @@ export class AnvilAst {
     const _predicate = predicate instanceof z.ZodType ?
       (n: AnvilAstNode<unknown>) => {
         if (n.satisfies(predicate)) {
-          console.log(`Node ${n} satisfies schema predicate ${predicate}`);
+          astLogger.info(`Node ${n} satisfies schema predicate ${predicate}`);
           return true;
         } else {
-          console.log(`Node ${n} does NOT satisfy schema predicate ${predicate}`);
+          astLogger.info(`Node ${n} does NOT satisfy schema predicate ${predicate}`);
           return false;
         }
       } :
@@ -832,7 +833,7 @@ export class AnvilAst {
       _predicate
         ? (loc) => {
           const n = this.node(loc);
-          console.log(`Checking node at ${loc} for predicate, resolved node: ${n}`);
+          astLogger.info(`Checking node at ${loc} for predicate, resolved node: ${n}`);
           return !!n && _predicate(n);
         }
         : undefined
@@ -907,7 +908,7 @@ export class AnvilAst {
     }
 
     const locations = this.orderedLocations.get(filename);
-    console.log(`Getting all locations for file ${filename}, total found: ${locations?.length ?? 0}`);
+    astLogger.info(`Getting all locations for file ${filename}, total found: ${locations?.length ?? 0}`);
     for (const loc of locations ?? []) {
       const node = this.node(loc);
       if (!node) {
@@ -960,7 +961,7 @@ export class AnvilAst {
    */
   findClosestAbsoluteSpan(filename: string, line: number, col: number,
                           predicate?: (l: AnvilAbsoluteSpan) => boolean): AnvilAbsoluteSpan | null {
-    console.log(`Search: closest AST node in ${filename} to line ${line}, col ${col}`);
+    astLogger.info(`Search: closest AST node in ${filename} to line ${line}, col ${col}`);
 
     const locations = this.orderedLocations.get(filename);
 
@@ -992,7 +993,7 @@ export class AnvilAst {
       }
     }
 
-    console.log(`Closest location found: ${best ? best.loc.id() : "none"}`);
+    astLogger.info(`Closest location found: ${best ? best.loc.id() : "none"}`);
 
     return best?.loc ?? null;
   }

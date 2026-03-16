@@ -4,6 +4,7 @@ import { AnvilLspUtils } from "../utils/AnvilLspUtils";
 import { AnvilAstNode } from "../core/ast/AnvilAst";
 import z from "zod";
 import { astNodeInfo } from "../info/parsed";
+import { diagnosticsLogger } from "../utils/logger";
 
 export class AnvilDescriptionGenerator {
 
@@ -20,7 +21,7 @@ export class AnvilDescriptionGenerator {
 
         const result = { errors: anvilDocument.anvilErrors ?? [] }
 
-        console.log("generating diagnostics for", uri, "with", result.errors.length, "errors");
+        diagnosticsLogger.info("generating diagnostics for", uri, "with", result.errors.length, "errors");
 
         for (let error of result.errors) {
             problems++;
