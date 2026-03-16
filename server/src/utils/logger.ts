@@ -15,6 +15,17 @@ export interface LoggerOptions {
  * All log messages will be prefixed with "[prefix] message".
  */
 export function createLogger(prefix: string) {
+  if (process.env.NODE_ENV === 'test' && +(process.env.DEBUG || 0) === 0) {
+    const empty = (() => {}) satisfies (message: unknown, ...optionalParams: unknown[]) => void;
+    return {
+      debug: empty,
+      info: empty,
+      warn: empty,
+      error: empty,
+      log: empty,
+    };
+  }
+
   const formatMessage = (message: unknown, ...optionalParams: unknown[]): [string, ...unknown[]] => {
     const formattedMessage = `[${prefix}] ${message}`;
     return [formattedMessage, ...optionalParams];

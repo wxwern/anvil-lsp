@@ -19,7 +19,7 @@
 	"scripts": {
 		"build": "tsc -b",
 		"watch": "tsc -b -w",
-		"test": "mocha --require ts-node/register --require mocha-suppress-logs ./test/**/*.test.ts",
+		"test": "NODE_ENV=test mocha --require ts-node/register --require mocha-suppress-logs ./test/**/*.test.ts",
 		"lint": "eslint"
 	},
 	"devDependencies": {
