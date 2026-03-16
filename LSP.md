@@ -6,9 +6,8 @@
     - ✅ Compile Errors
     - ⚠️ Compile Warnings
 - ✅ Hover Information
-    - ✅ Type info
-    - ✅ Definition info
-    - ❌ Lifetime info
+    - ✅ Definitions and types
+    - ⚠️ Lifetimes and timings
     - ❌ Documentation
     - ✅ Anvil syntax help
 - ✅ Go to Definition
@@ -42,9 +41,9 @@
         - ✅ Record init snippet (`Rec::{<field> = <value>; ... }`)
         - ✅ Spawn process snippet (`spawn <proc>(<args>)`)
 - ✅ Inlay Hints
-    - ⚠️ Timing Information
-        - ⚠️ Clock Cycle Hints
-        - ⚠️ Lifetime Hints
+    - ⚠️ Lifetime and timings
+        - ⚠️ Clock Cycle indicators
+        - ⚠️ Lifetime indicators
 - ⏳ Rename/Refactor symbol
     - Requires compiler annotations for all symbol reference locations.
 

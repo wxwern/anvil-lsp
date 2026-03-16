@@ -20,8 +20,9 @@ To install a supported version of Anvil, view the [Anvil installation instructio
     - Compile Errors
     - Compile Warnings^
 - [x] Hover Information
-    - Type info
-    - Definition info
+    - Implementation
+    - Definitions and types
+    - Lifetimes and timings^
     - Anvil syntax help
 - [x] Go to Definition
 - [x] Go to Type Definition^
@@ -34,9 +35,9 @@ To install a supported version of Anvil, view the [Anvil installation instructio
     - Context-aware suggestions
     - Snippets
 - [x] Inlay Hints
-    - Timing Information^
-        - Clock Cycle Hints^
-        - Lifetime Hints^
+    - Lifetime and timings^
+        - Clock Cycle indicators^
+        - Lifetime indicators^
 - [ ] Rename/Refactor symbol
 
 For details, see the [LSP feature support documentation](LSP.md).
