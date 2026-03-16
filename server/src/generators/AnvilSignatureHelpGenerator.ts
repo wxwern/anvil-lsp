@@ -8,20 +8,24 @@ import { signatureHelpLogger } from "../utils/logger";
 
 export class AnvilSignatureHelpGenerator {
 
+  private constructor() {}
+
+
+  //
+  // CONFIGURATION
+  //
+
   /** Characters that trigger signature help display. */
   public static readonly TRIGGER_CHARS = ['(', '{'];
 
   /** Characters that retrigger (update) an already-active signature help panel. */
   public static readonly RETRIGGER_CHARS = [',', ';', '='];
 
-  /** Segment visibility used for all signature help documentation panels. */
-  private static readonly SIGNATURE_SEGMENTS = { code: true, documentation: true } as const;
 
-  // Reuse regex groups from the completion generator for consistency.
-  private static readonly SPACER_REGEX_GROUP      = AnvilCompletionGenerator.SPACER_REGEX_GROUP;
-  private static readonly IDENTIFIER_REGEX_GROUP  = AnvilCompletionGenerator.IDENTIFIER_REGEX_GROUP;
-  private static readonly TYPEDEF_REGEX_GROUP     = AnvilCompletionGenerator.TYPEDEF_REGEX_GROUP;
 
+  //
+  // PUBLIC API
+  //
 
   /**
    * Returns LSP SignatureHelp for the given cursor position, or null if no
@@ -49,9 +53,18 @@ export class AnvilSignatureHelpGenerator {
   }
 
 
-  // ---------------------------------------------------------------------------
-  // Internal helpers
-  // ---------------------------------------------------------------------------
+  //
+  // INTERNAL HELPERS
+  //
+
+  /** Segment visibility used for all signature help documentation panels. */
+  private static readonly SIGNATURE_SEGMENTS = { code: true, documentation: true } as const;
+
+  // Reuse regex groups from the completion generator for consistency. TODO: refactor into shared utils
+  private static readonly SPACER_REGEX_GROUP      = AnvilCompletionGenerator.SPACER_REGEX_GROUP;
+  private static readonly IDENTIFIER_REGEX_GROUP  = AnvilCompletionGenerator.IDENTIFIER_REGEX_GROUP;
+  private static readonly TYPEDEF_REGEX_GROUP     = AnvilCompletionGenerator.TYPEDEF_REGEX_GROUP;
+
 
   /**
    * Returns the text of the document from the start of the file up to but not
@@ -116,9 +129,9 @@ export class AnvilSignatureHelpGenerator {
   }
 
 
-  // ---------------------------------------------------------------------------
-  // Heuristic 1: spawn <proc>(<args>)
-  // ---------------------------------------------------------------------------
+  //
+  // HEURISTIC: spawn <proc>(<args>)
+  //
 
   private static checkSpawnSignatureHelp(
     position: Position,
@@ -183,9 +196,9 @@ export class AnvilSignatureHelpGenerator {
   }
 
 
-  // ---------------------------------------------------------------------------
-  // Heuristic 2: call <func>(<args>)
-  // ---------------------------------------------------------------------------
+  //
+  // HEURISTIC: call <func>(<args>)
+  //
 
   private static checkCallSignatureHelp(
     position: Position,
@@ -247,9 +260,9 @@ export class AnvilSignatureHelpGenerator {
   }
 
 
-  // ---------------------------------------------------------------------------
-  // Heuristic 3: send <endpoint>.<message>(<value>)
-  // ---------------------------------------------------------------------------
+  //
+  // HEURISTIC: send <endpoint>.<message>(<value>)
+  //
 
   private static checkSendSignatureHelp(
     position: Position,
@@ -356,9 +369,9 @@ export class AnvilSignatureHelpGenerator {
   }
 
 
-  // ---------------------------------------------------------------------------
-  // Heuristic 3: Rec::{<field> = <value>; ...}
-  // ---------------------------------------------------------------------------
+  //
+  // HEURISTIC: Rec::{<field> = <value>; ...}
+  //
 
   private static checkRecordInitSignatureHelp(
     position: Position,

@@ -102,6 +102,10 @@ export class AnvilCompletionDetail {
 
 export class AnvilCompletionGenerator {
 
+  //
+  // CONFIGURATION
+  //
+
   public static readonly TRIGGER_CHARS = ['.', '*', '<', '{', '(', '[', ':', '=', '@', '#', ' '];
 
   public static readonly SPACER_REGEX_GROUP = "(^|[\\s\\(\\[{])";
@@ -109,6 +113,10 @@ export class AnvilCompletionGenerator {
   public static readonly TYPEDEF_REGEX_GROUP = "([a-zA-Z_][a-zA-Z0-9_<>\\(\\)\\[\\]]*)";
   public static readonly LIFETIME_IDENTIFIER_REGEX_GROUP = "(#[~0-9]+|[#a-zA-Z_][a-zA-Z0-9_]*[+0-9]*)";
 
+
+  //
+  // INTERNAL HELPERS
+  //
 
   private static getPrefixAtPosition(position: Position, document: AnvilDocument, options?: { fast?: boolean }): string {
     const prefix = document.textDocument.getText({
@@ -124,6 +132,9 @@ export class AnvilCompletionGenerator {
   }
 
 
+  //
+  // PUBLIC API
+  //
 
   public static getCompletions(position: Position, document: AnvilDocument): AnvilCompletionDetail[] {
 
@@ -186,6 +197,10 @@ export class AnvilCompletionGenerator {
 
 
 
+  //
+  // HEURISTICS: register operations
+  //
+
   private static checkReadRegisterHeuristics(position: Position, document: AnvilDocument): AnvilCompletionDetail[] | null {
     const prefix = this.getPrefixAtPosition(position, document);
 
@@ -224,6 +239,9 @@ export class AnvilCompletionGenerator {
 
 
 
+  //
+  // HEURISTICS: send/recv expressions
+  //
 
   private static checkWriteRegisterHeuristics(position: Position, document: AnvilDocument): AnvilCompletionDetail[] | null {
     const prefix = this.getPrefixAtPosition(position, document);
@@ -267,6 +285,9 @@ export class AnvilCompletionGenerator {
 
 
 
+  //
+  // HEURISTICS: send/recv expressions
+  //
 
   private static checkSendRecvHeuristics(position: Position, document: AnvilDocument): AnvilCompletionDetail[] | null {
     const prefix = this.getPrefixAtPosition(position, document);
@@ -371,8 +392,9 @@ export class AnvilCompletionGenerator {
 
 
 
-
-
+  //
+  // HEURISTICS: timing annotations
+  //
 
   private static checkTimingAnnotHeuristics(position: Position, document: AnvilDocument): AnvilCompletionDetail[] | null {
     const prefix = this.getPrefixAtPosition(position, document);
@@ -545,6 +567,9 @@ export class AnvilCompletionGenerator {
 
 
 
+  //
+  // HEURISTICS: typedef declarations
+  //
 
   private static checkTypedefHeuristics(position: Position, document: AnvilDocument): AnvilCompletionDetail[] | null {
     const prefix = this.getPrefixAtPosition(position, document);
@@ -602,6 +627,9 @@ export class AnvilCompletionGenerator {
   }
 
 
+  //
+  // HEURISTICS: typedef parameter lists
+  //
 
   private static checkTypedefParamHeuristics(position: Position, document: AnvilDocument): AnvilCompletionDetail[] | null {
     const prefix = this.getPrefixAtPosition(position, document);
@@ -658,6 +686,10 @@ export class AnvilCompletionGenerator {
 
 
 
+  //
+  // HEURISTICS: spawn process
+  //
+
   private static checkSpawnHeuristics(position: Position, document: AnvilDocument): AnvilCompletionDetail[] | null {
     const prefix = this.getPrefixAtPosition(position, document);
 
@@ -706,6 +738,9 @@ export class AnvilCompletionGenerator {
   }
 
 
+  //
+  // HEURISTICS: call function
+  //
 
   private static checkCallHeuristics(position: Position, document: AnvilDocument): AnvilCompletionDetail[] | null {
     const prefix = this.getPrefixAtPosition(position, document);
@@ -751,6 +786,9 @@ export class AnvilCompletionGenerator {
   }
 
 
+  //
+  // HEURISTICS: construct syntax
+  //
 
   private static checkConstructSyntaxHeuristics(position: Position, document: AnvilDocument): AnvilCompletionDetail[] | null {
     const prefix = this.getPrefixAtPosition(position, document);
@@ -838,6 +876,9 @@ export class AnvilCompletionGenerator {
   }
 
 
+  //
+  // UTILITIES
+  //
 
   private static getAllNodes<T = any, S = any>(
     position: Position, document: AnvilDocument,

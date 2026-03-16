@@ -3,13 +3,18 @@ import { AnvilDocument } from "../core/AnvilDocument";
 import { AnvilLspUtils } from "../utils/AnvilLspUtils";
 import { AnvilAstNode, AnvilEventInfo } from "../core/ast/AnvilAst";
 import z from "zod";
-import { AnvilMessageDefSchema, AnvilMessageSyncMode, AnvilMessageSyncModeSchema } from "../core/ast/schema";
+import { AnvilMessageDefSchema, AnvilMessageSyncMode } from "../core/ast/schema";
 import { astNodeInfo } from "../info/parsed";
 import { diagnosticsLogger } from "../utils/logger";
 
 export class AnvilDescriptionGenerator {
 
     private constructor() { }
+
+
+    //
+    // PUBLIC API: diagnostics
+    //
 
     /**
      * Describes the diagnostics for a given AnvilDocument, converting them into LSP Diagnostics.
@@ -88,6 +93,10 @@ export class AnvilDescriptionGenerator {
     }
 
 
+    //
+    // HELPERS
+    //
+
     private static nodeType(n: AnvilAstNode): string | null {
         switch (n.kind) {
             case "expr": return n.type ?? "expr";
@@ -153,7 +162,7 @@ export class AnvilDescriptionGenerator {
      * Returns a human-friendly description of the timing contracts for a message_def node,
      * as a markdown bullet list, or an empty string if the node is not a message_def.
      */
-    static describeMessageDefContracts(
+    private static describeMessageDefContracts(
         msgNode: AnvilAstNode,
         context?: "send" | "recv"
     ): string {
@@ -247,7 +256,13 @@ export class AnvilDescriptionGenerator {
         };
     }
 
-    public static getNodeDefinitionStr(
+
+
+    //
+    // PUBLIC API: node descriptions
+    //
+
+    static getNodeDefinitionStr(
         node: AnvilAstNode<any>,
         anvilDocument: AnvilDocument,
         supplementaryDocuments?: (f: AnvilAstNode) => AnvilDocument | null,
@@ -380,11 +395,11 @@ export class AnvilDescriptionGenerator {
     /**
      * Generates a short one-line hint for the given node, returning a markdown string that can be used in hover or other LSP features.
      */
-    static async hintNode(
+    static hintNode(
         node: AnvilAstNode,
         anvilDocument: AnvilDocument,
         supplementaryDocuments?: (f: AnvilAstNode) => AnvilDocument | null,
-    ): Promise<string> {
+    ): string {
 
         const span = node.span;
 
@@ -544,15 +559,19 @@ export class AnvilDescriptionGenerator {
     /**
      * Explains the given node in detail, returning a markdown string that can be used in hover or other LSP features.
      */
-    static async explainNode(
+    static explainNode(
         node: AnvilAstNode,
         anvilDocument: AnvilDocument,
         supplementaryDocuments?: (f: AnvilAstNode) => AnvilDocument | null
-    ): Promise<string> {
+    ): string {
         return this.describeNode(node, anvilDocument, supplementaryDocuments, {
             code: true,
             documentation: true,
             definitions: true,
+            lifetime: true,
+            explanations: true,
+            examples: true,
+            debug: false
         });
     }
 }

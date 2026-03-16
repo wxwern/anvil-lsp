@@ -13,12 +13,14 @@
 import { z } from 'zod';
 import completionInfoJson from './completion-info.json';
 import astNodeInfoJson from './ast-node-info.json';
-import {AnvilAstNode} from '../core/ast/AnvilAst';
-import {AnvilLiteralSchema, AnvilTypeSchema} from '../core/ast/schema';
+import { AnvilAstNode } from '../core/ast/AnvilAst';
+import { AnvilLiteralSchema, AnvilTypeSchema } from '../core/ast/schema';
 
-// ---------------------------------------------------------------------------
-// Helpers
-// ---------------------------------------------------------------------------
+
+
+//
+// HELPERS
+//
 
 function validate<T>(schema: z.ZodType<T>, data: unknown, filePath: string): T {
 	const result = schema.safeParse(data);
@@ -31,15 +33,17 @@ function validate<T>(schema: z.ZodType<T>, data: unknown, filePath: string): T {
 	return result.data;
 }
 
-// ---------------------------------------------------------------------------
-// Scope value
+
+
+//
+// SCOPE VALUE
 //
 // A scope entry is one of:
 //   - null / absent     only valid at the top-level global scope
 //   - a two-char string valid when surrounded by those delimiter characters,
 //                         e.g. "()" or "<>"
 //   - any other string  valid when nested inside an AST node of that kind
-// ---------------------------------------------------------------------------
+//
 
 export type ScopeValue =
 	| { kind: 'global' }
@@ -52,15 +56,17 @@ function parseScopeValue(raw: string | null): ScopeValue {
 	return { kind: 'astNode', nodeKind: raw };
 }
 
-// ---------------------------------------------------------------------------
-// Keyword variant expansion
+
+
+//
+// KEYWORD VARIANT EXPANSION
 //
 // A raw keyword entry may have any of its fields expressed as either a scalar
 // or an array.  Whenever at least one field is an array of length N, every
 // scalar field is broadcast to length N and every array field must also have
 // length N (otherwise an error is thrown).  The result is N KeywordVariant
 // objects, each with purely scalar fields.
-// ---------------------------------------------------------------------------
+//
 
 export interface KeywordInfoEntryVariant {
 	/** Completion category (e.g. "modifier", "declaration", "control"). */
@@ -83,9 +89,11 @@ export interface KeywordInfoEntryVariant {
 	scope: ScopeValue;
 }
 
-// ---------------------------------------------------------------------------
-// Exported types
-// ---------------------------------------------------------------------------
+
+
+//
+// EXPORTED TYPES
+//
 
 export interface CompletionKindInfoEntry {
 	hint: string;
@@ -118,9 +126,12 @@ export interface AstNodeInfoEntry {
 	internal: boolean;
 }
 
-// ---------------------------------------------------------------------------
-// Raw Zod schemas (for validation of the JSON on disk)
-// ---------------------------------------------------------------------------
+
+
+//
+// RAW ZOD SCHEMAS
+// (for validation of the JSON on disk)
+//
 
 // --- completion-info.json ---
 
@@ -129,8 +140,8 @@ const RawCompletionKindEntrySchema = z.object({
 	lspKind: z.string(),
 });
 
-// Each variadic keyword field is either a scalar or an array of that scalar.
-// astKind/scope elements may be null (meaning "not applicable" for that variant).
+// --- ast-node-info.json ---
+
 const Nullable = <T extends z.ZodTypeAny>(t: T) => t.nullable();
 const ScalarOrArray = <T extends z.ZodTypeAny>(t: T) =>
 	z.union([t, z.array(t)]);
@@ -171,8 +182,6 @@ const RawCompletionInfoSchema = z.object({
 	}).optional(),
 });
 
-// --- ast-node-info.json ---
-
 const RawAstNodeEntrySchema = z.object({
 	name:        z.string(),
 	description: z.string(),
@@ -187,9 +196,11 @@ const RawAstNodeInfoSchema = z.object({
 	),
 });
 
-// ---------------------------------------------------------------------------
-// Variant expansion
-// ---------------------------------------------------------------------------
+
+
+//
+// VARIANT EXPANSION
+//
 
 type RawKeyword = z.infer<typeof RawKeywordEntrySchema>;
 type NullableStringOrArray = string | null | (string | null)[];
@@ -285,9 +296,9 @@ function expandKeywordVariants(keyword: string, raw: RawKeyword): KeywordInfoEnt
 	}));
 }
 
-// ---------------------------------------------------------------------------
-// Wrapper: CompletionInfo
-// ---------------------------------------------------------------------------
+//
+// WRAPPERS
+//
 
 export class CompletionInfo {
 	private readonly kindMap:          ReadonlyMap<string, CompletionKindInfoEntry>;
@@ -426,10 +437,6 @@ export class CompletionInfo {
 	get knownSyncTimingKeys(): string[] { return Array.from(this.syncTimingMap.keys()); }
 }
 
-// ---------------------------------------------------------------------------
-// Wrapper: AstNodeInfo
-// ---------------------------------------------------------------------------
-
 export class AstNodeInfo {
 	private readonly nodeMap: ReadonlyMap<string, AstNodeInfoEntry>;
 
@@ -504,9 +511,11 @@ export class AstNodeInfo {
 	get knownKeys(): string[] { return Array.from(this.nodeMap.keys()); }
 }
 
-// ---------------------------------------------------------------------------
-// Module-level initialisation - throws on invalid JSON
-// ---------------------------------------------------------------------------
+
+//
+// MODULE-LEVEL INITIALISATION
+// (throws on invalid JSON)
+//
 
 const _rawCompletionInfo = validate(
 	RawCompletionInfoSchema,

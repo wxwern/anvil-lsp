@@ -1,7 +1,3 @@
-/* --------------------------------------------------------------------------------------------
- * Copyright (c) Microsoft Corporation. All rights reserved.
- * Licensed under the MIT License. See License.txt in the project root for license information.
- * ------------------------------------------------------------------------------------------ */
 import {
 	createConnection,
 	TextDocuments,
@@ -28,6 +24,8 @@ import { AnvilSignatureHelpGenerator } from './generators/AnvilSignatureHelpGene
 import { AnvilInlayHintGenerator } from './generators/AnvilInlayHintGenerator';
 import { AnvilAstNode, AnvilAstNodePath } from './core/ast/AnvilAst';
 import { serverLogger } from './utils/logger';
+
+
 
 //
 // INITIAL SETUP
@@ -160,7 +158,7 @@ const getAnvilDocumentForNode = (node: AnvilAstNode) => {
 
 
 //
-// LSP Basic File Events
+// LSP FILE EVENTS
 //
 
 const documentSubscribers = {
@@ -649,8 +647,10 @@ connection.languages.inlayHint.on(async (params) => {
 });
 
 
+
+
 //
-// BEGIN
+// ENTRY POINT
 //
 
 // Make the text document manager listen on the connection

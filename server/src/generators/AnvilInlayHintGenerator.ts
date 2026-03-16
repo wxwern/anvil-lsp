@@ -8,6 +8,12 @@ import { AnvilEventInfo } from "../core/ast/AnvilAst";
 
 export class AnvilInlayHintGenerator {
 
+  private constructor() {}
+
+  //
+  // PUBLIC API
+  //
+
   /**
    * Generates inlay hints for the given Anvil document based on the provided server settings.
    */
@@ -21,6 +27,10 @@ export class AnvilInlayHintGenerator {
 
     return hints;
   }
+
+  //
+  // LIFETIME HINTS
+  //
 
   /**
    * Computes inlay hints related to event cycles and lifetimes in the Anvil document, and returns them as InlayHint objects.
