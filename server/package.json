@@ -20,13 +20,19 @@
 		"build": "tsc -b",
 		"watch": "tsc -b -w",
 		"test": "NODE_ENV=test mocha --require ts-node/register --require mocha-suppress-logs ./test/**/*.test.ts",
-		"lint": "eslint"
+		"lint": "eslint src/ test/",
+		"format": "prettier --write ."
 	},
 	"devDependencies": {
 		"@types/mocha": "^10.0.10",
 		"@types/node": "^22",
+		"eslint-config-prettier": "^10.1.8",
+		"eslint-plugin-prettier": "^5.5.5",
+		"globals": "^17.4.0",
+		"jiti": "^2.6.1",
 		"mocha": "^11.3.0",
 		"mocha-suppress-logs": "^0.6.0",
+		"prettier": "^3.8.1",
 		"ts-node": "^10.9.2",
 		"typescript": "^5.9.2",
 		"typescript-eslint": "^8.39.0"

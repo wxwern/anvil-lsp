@@ -2,7 +2,6 @@
   "_comment": "Lookup table from AST node kind/type to useful information. Keys are 'kind' alone when the kind is sufficient to identify the token, or 'kind/type' when the type sub-discriminator is also needed. Use the pattern (node.type ? `${node.kind}/${node.type}` : node.kind) for O(1) lookup.",
 
   "kind": {
-
     "compilation_unit": {
       "name": "file",
       "description": "The root of an Anvil source file. A compilation unit contains all top-level declarations in a `.anvil` file: processes, channel classes, type definitions, functions, constants, and imports.",

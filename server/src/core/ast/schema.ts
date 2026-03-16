@@ -1,20 +1,21 @@
-import { z } from "zod";
-import { isAstSchemaVersionCompatible } from "./utils";
+import { z } from 'zod';
+import { isAstSchemaVersionCompatible } from './utils';
 
 //
 // SCHEMA VERSIONING AND VALIDATION
 //
 
-export const REQUIRED_AST_SCHEMA_VERSION = "v0.1.0-wip.1";
+export const REQUIRED_AST_SCHEMA_VERSION = 'v0.1.0-wip.1';
 
-const AnvilAstSchemaVersionStringSchema = z.string()
+const AnvilAstSchemaVersionStringSchema = z
+  .string()
   .refine(
-    (versionStr) => isAstSchemaVersionCompatible(versionStr, REQUIRED_AST_SCHEMA_VERSION),
+    (versionStr) =>
+      isAstSchemaVersionCompatible(versionStr, REQUIRED_AST_SCHEMA_VERSION),
     {
       message: `AST schema must match ${REQUIRED_AST_SCHEMA_VERSION} or newer non-major version!`,
-    }
+    },
   );
-
 
 //
 // PRIMITIVES
@@ -26,8 +27,6 @@ export const AnvilPositionSchema = z.looseObject({
 });
 export type AnvilPosition = z.infer<typeof AnvilPositionSchema>;
 
-
-
 /**
  * A span with a start and end position. Matches code_span_to_yojson: { start, end }
  */
@@ -36,8 +35,6 @@ export const AnvilSpanSchema = z.looseObject({
   end: AnvilPositionSchema,
 });
 export type AnvilSpan = z.infer<typeof AnvilSpanSchema>;
-
-
 
 /**
  * A span that also carries an optional file_name (used in def_span entries).
@@ -49,8 +46,6 @@ export const AnvilDefSpanSchema = z.looseObject({
   end: AnvilPositionSchema,
 });
 export type AnvilDefSpan = z.infer<typeof AnvilDefSpanSchema>;
-
-
 
 /**
  * After AnvilAstNode::deepFlattenNode during init, every ast_node wrapper is merged
@@ -77,41 +72,39 @@ export const AnvilSpannableSchema = z.looseObject({
 });
 export type AnvilSpannable = z.infer<typeof AnvilSpannableSchema>;
 
-
-
 //
 // LITERAL SCHEMA
 // literal_to_yojson: { kind: "literal", type: "binary"|"decimal"|"hex"|"with_length"|"no_length", ... }
 //
 
-export const AnvilLiteralSchema = z.discriminatedUnion("type", [
+export const AnvilLiteralSchema = z.discriminatedUnion('type', [
   z.looseObject({
-    kind: z.literal("literal"),
-    type: z.literal("binary"),
+    kind: z.literal('literal'),
+    type: z.literal('binary'),
     length: z.number().int(),
     digits: z.array(z.number().int()),
   }),
   z.looseObject({
-    kind: z.literal("literal"),
-    type: z.literal("decimal"),
+    kind: z.literal('literal'),
+    type: z.literal('decimal'),
     length: z.number().int(),
     digits: z.array(z.number().int()),
   }),
   z.looseObject({
-    kind: z.literal("literal"),
-    type: z.literal("hex"),
+    kind: z.literal('literal'),
+    type: z.literal('hex'),
     length: z.number().int(),
     digits: z.array(z.number().int()),
   }),
   z.looseObject({
-    kind: z.literal("literal"),
-    type: z.literal("with_length"),
+    kind: z.literal('literal'),
+    type: z.literal('with_length'),
     length: z.number().int(),
     value: z.number().int(),
   }),
   z.looseObject({
-    kind: z.literal("literal"),
-    type: z.literal("no_length"),
+    kind: z.literal('literal'),
+    type: z.literal('no_length'),
     value: z.number().int(),
   }),
 ]);
@@ -123,11 +116,11 @@ export type AnvilLiteral = z.infer<typeof AnvilLiteralSchema>;
 // param_to_yojson: { kind: "param", name, type }
 //
 
-export const AnvilParamTypeSchema = z.enum(["int", "type"]);
+export const AnvilParamTypeSchema = z.enum(['int', 'type']);
 export type AnvilParamType = z.infer<typeof AnvilParamTypeSchema>;
 
 export const AnvilParamSchema = z.looseObject({
-  kind: z.literal("param"),
+  kind: z.literal('param'),
   name: z.string(),
   type: AnvilParamTypeSchema,
 });
@@ -141,95 +134,93 @@ export type AnvilParam = z.infer<typeof AnvilParamSchema>;
 
 // Forward-declare types for recursion
 export type AnvilParamValue =
-  | { kind: "param_value"; type: "int"; value: number }
-  | { kind: "param_value"; type: "type"; data_type: AnvilDataType };
+  | { kind: 'param_value'; type: 'int'; value: number }
+  | { kind: 'param_value'; type: 'type'; data_type: AnvilDataType };
 
 export type AnvilDataType = {
-  kind: "data_type";
+  kind: 'data_type';
 } & (
-  | { type: "logic" }
+  | { type: 'logic' }
   | {
-      type: "array";
+      type: 'array';
       element: AnvilDataType;
       size: { param: string } | { value: number };
     }
-  | { type: "tuple"; elements: AnvilDataType[] }
-  | { type: "record"; elements: unknown[] }
+  | { type: 'tuple'; elements: AnvilDataType[] }
+  | { type: 'record'; elements: unknown[] }
   | {
-      type: "variant";
+      type: 'variant';
       data_type: AnvilDataType | null;
       elements: unknown[];
     }
-  | { type: "opaque"; name: string }
-  | { type: "named"; name: string; params: AnvilParamValue[] }
+  | { type: 'opaque'; name: string }
+  | { type: 'named'; name: string; params: AnvilParamValue[] }
 );
 
 export const AnvilParamValueSchema: z.ZodType<AnvilParamValue> = z.lazy(() =>
-  z.discriminatedUnion("type", [
+  z.discriminatedUnion('type', [
     z.looseObject({
-      kind: z.literal("param_value"),
-      type: z.literal("int"),
+      kind: z.literal('param_value'),
+      type: z.literal('int'),
       value: z.number().int(),
     }),
     z.looseObject({
-      kind: z.literal("param_value"),
-      type: z.literal("type"),
+      kind: z.literal('param_value'),
+      type: z.literal('type'),
       data_type: AnvilDataTypeSchema,
     }),
-  ])
+  ]),
 );
 
 export const AnvilDataTypeSchema: z.ZodType<AnvilDataType> = z.lazy(() =>
-  z
-    .looseObject({ kind: z.literal("data_type") })
-    .and(
-      z.discriminatedUnion("type", [
-        z.looseObject({ type: z.literal("logic") }),
-        z.looseObject({
-          type: z.literal("array"),
-          element: AnvilDataTypeSchema,
-          size: z.union([
-            z.looseObject({ param: z.string() }),
-            z.looseObject({ value: z.number().int() }),
-          ]),
-        }),
-        z.looseObject({
-          type: z.literal("tuple"),
-          elements: z.array(AnvilDataTypeSchema),
-        }),
-        z.looseObject({
-          type: z.literal("record"),
-          elements: z.array(
-            AnvilSpannableSchema.extend({
-              kind: z.literal("type_element_def"),
-              name: z.string(),
-              data_type: AnvilDataTypeSchema,
-            })
-          ),
-        }),
-        z.looseObject({
-          type: z.literal("variant"),
-          data_type: AnvilDataTypeSchema.nullable(),
-          elements: z.array(
-            AnvilSpannableSchema.extend({
-              kind: z.literal("type_element_def"),
-              name: z.string(),
-              data_type: AnvilDataTypeSchema.nullable().optional(),
-              literal: AnvilLiteralSchema.nullable().optional(),
-            })
-          ),
-        }),
-        z.looseObject({
-          type: z.literal("opaque"),
-          name: z.string(),
-        }),
-        z.looseObject({
-          type: z.literal("named"),
-          name: z.string(),
-          params: z.array(AnvilParamValueSchema),
-        }),
-      ])
-    )
+  z.looseObject({ kind: z.literal('data_type') }).and(
+    z.discriminatedUnion('type', [
+      z.looseObject({ type: z.literal('logic') }),
+      z.looseObject({
+        type: z.literal('array'),
+        element: AnvilDataTypeSchema,
+        size: z.union([
+          z.looseObject({ param: z.string() }),
+          z.looseObject({ value: z.number().int() }),
+        ]),
+      }),
+      z.looseObject({
+        type: z.literal('tuple'),
+        elements: z.array(AnvilDataTypeSchema),
+      }),
+      z.looseObject({
+        type: z.literal('record'),
+        elements: z.array(
+          AnvilSpannableSchema.extend({
+            kind: z.literal('type_element_def'),
+            name: z.string(),
+            data_type: AnvilDataTypeSchema,
+          }),
+        ),
+      }),
+      z.looseObject({
+        type: z.literal('variant'),
+        data_type: AnvilDataTypeSchema.nullable(),
+        elements: z.array(
+          AnvilSpannableSchema.extend({
+            kind: z.literal('type_element_def'),
+            name: z.string(),
+            data_type: AnvilDataTypeSchema.nullable().optional(),
+            literal: AnvilLiteralSchema.nullable().optional(),
+          }),
+        ),
+      }),
+      z.looseObject({
+        type: z.literal('opaque'),
+        name: z.string(),
+      }),
+      z.looseObject({
+        type: z.literal('named'),
+        name: z.string(),
+        params: z.array(AnvilParamValueSchema),
+      }),
+    ]),
+  ),
 );
 
 //
@@ -238,7 +229,7 @@ export const AnvilDataTypeSchema: z.ZodType<AnvilDataType> = z.lazy(() =>
 //
 
 export const AnvilMessageSpecifierSchema = z.looseObject({
-  kind: z.literal("message_specifier"),
+  kind: z.literal('message_specifier'),
   endpoint: z.string(),
   msg: z.string(),
 });
@@ -251,34 +242,42 @@ export type AnvilMessageSpecifier = z.infer<typeof AnvilMessageSpecifierSchema>;
 //
 
 export const AnvilDelayPatSchema = z
-  .looseObject({ kind: z.literal("delay_pat") })
+  .looseObject({ kind: z.literal('delay_pat') })
   .and(
-    z.discriminatedUnion("type", [
-      z.looseObject({ type: z.literal("cycles"), value: z.number().int() }),
+    z.discriminatedUnion('type', [
       z.looseObject({
-        type: z.literal("message"),
+        type: z.literal('cycles'),
+        value: z.number().int(),
+      }),
+      z.looseObject({
+        type: z.literal('message'),
         value: AnvilMessageSpecifierSchema,
         offset: z.number().int(),
       }),
-      z.looseObject({ type: z.literal("eternal") }),
-    ])
+      z.looseObject({ type: z.literal('eternal') }),
+    ]),
   );
 export type AnvilDelayPat = z.infer<typeof AnvilDelayPatSchema>;
 
 export const AnvilDelayPatChanLocalSchema = z
-  .looseObject({ kind: z.literal("delay_pat_chan_local") })
+  .looseObject({ kind: z.literal('delay_pat_chan_local') })
   .and(
-    z.discriminatedUnion("type", [
-      z.looseObject({ type: z.literal("cycles"), value: z.number().int() }),
+    z.discriminatedUnion('type', [
       z.looseObject({
-        type: z.literal("message"),
+        type: z.literal('cycles'),
+        value: z.number().int(),
+      }),
+      z.looseObject({
+        type: z.literal('message'),
         value: z.string(),
         offset: z.number().int(),
       }),
-      z.looseObject({ type: z.literal("eternal") }),
-    ])
+      z.looseObject({ type: z.literal('eternal') }),
+    ]),
   );
-export type AnvilDelayPatChanLocal = z.infer<typeof AnvilDelayPatChanLocalSchema>;
+export type AnvilDelayPatChanLocal = z.infer<
+  typeof AnvilDelayPatChanLocalSchema
+>;
 
 //
 // SIGNAL LIFETIMES
@@ -287,16 +286,18 @@ export type AnvilDelayPatChanLocal = z.infer<typeof AnvilDelayPatChanLocalSchema
 //
 
 export const AnvilSigLifetimeSchema = z.looseObject({
-  kind: z.literal("sig_lifetime"),
+  kind: z.literal('sig_lifetime'),
   ending: AnvilDelayPatSchema,
 });
 export type AnvilSigLifetime = z.infer<typeof AnvilSigLifetimeSchema>;
 
 export const AnvilSigLifetimeChanLocalSchema = z.looseObject({
-  kind: z.literal("sig_lifetime_chan_local"),
+  kind: z.literal('sig_lifetime_chan_local'),
   ending: AnvilDelayPatChanLocalSchema,
 });
-export type AnvilSigLifetimeChanLocal = z.infer<typeof AnvilSigLifetimeChanLocalSchema>;
+export type AnvilSigLifetimeChanLocal = z.infer<
+  typeof AnvilSigLifetimeChanLocalSchema
+>;
 
 //
 // SIGNAL TYPES
@@ -305,14 +306,14 @@ export type AnvilSigLifetimeChanLocal = z.infer<typeof AnvilSigLifetimeChanLocal
 //
 
 export const AnvilSigTypeSchema = z.looseObject({
-  kind: z.literal("sig_type"),
+  kind: z.literal('sig_type'),
   data_type: AnvilDataTypeSchema,
   lifetime: AnvilSigLifetimeSchema,
 });
 export type AnvilSigType = z.infer<typeof AnvilSigTypeSchema>;
 
 export const AnvilSigTypeChanLocalSchema = z.looseObject({
-  kind: z.literal("sig_type_chan_local"),
+  kind: z.literal('sig_type_chan_local'),
   data_type: AnvilDataTypeSchema,
   lifetime: AnvilSigLifetimeChanLocalSchema,
 });
@@ -324,21 +325,21 @@ export type AnvilSigTypeChanLocal = z.infer<typeof AnvilSigTypeChanLocalSchema>;
 //
 
 export const AnvilMessageSyncModeSchema = z
-  .looseObject({ kind: z.literal("message_sync_mode") })
+  .looseObject({ kind: z.literal('message_sync_mode') })
   .and(
-    z.discriminatedUnion("type", [
-      z.looseObject({ type: z.literal("dynamic") }),
+    z.discriminatedUnion('type', [
+      z.looseObject({ type: z.literal('dynamic') }),
       z.looseObject({
-        type: z.literal("static"),
+        type: z.literal('static'),
         init: z.number().int(),
         interval: z.number().int(),
       }),
       z.looseObject({
-        type: z.literal("dependent"),
+        type: z.literal('dependent'),
         msg: z.string(),
         delay: z.number().int(),
       }),
-    ])
+    ]),
   );
 export type AnvilMessageSyncMode = z.infer<typeof AnvilMessageSyncModeSchema>;
 
@@ -348,9 +349,9 @@ export type AnvilMessageSyncMode = z.infer<typeof AnvilMessageSyncModeSchema>;
 //
 
 export const AnvilMessageDefSchema = z.looseObject({
-  kind: z.literal("message_def"),
+  kind: z.literal('message_def'),
   name: z.string(),
-  dir: z.enum(["in", "out"]),
+  dir: z.enum(['in', 'out']),
   send_sync: AnvilMessageSyncModeSchema,
   recv_sync: AnvilMessageSyncModeSchema,
   sig_types: z.array(AnvilSigTypeChanLocalSchema),
@@ -364,7 +365,7 @@ export type AnvilMessageDef = z.infer<typeof AnvilMessageDefSchema>;
 //
 
 export const AnvilChannelClassSchema = z.looseObject({
-  kind: z.literal("channel_class_def"),
+  kind: z.literal('channel_class_def'),
   name: z.string(),
   messages: z.array(AnvilMessageDefSchema),
   params: z.array(AnvilParamSchema),
@@ -379,7 +380,7 @@ export type AnvilChannelClass = z.infer<typeof AnvilChannelClassSchema>;
 //
 
 export const AnvilTypeSchema = z.looseObject({
-  kind: z.literal("type_def"),
+  kind: z.literal('type_def'),
   name: z.string(),
   data_type: AnvilDataTypeSchema,
   params: z.array(AnvilParamSchema),
@@ -394,7 +395,7 @@ export type AnvilType = z.infer<typeof AnvilTypeSchema>;
 //
 
 export const AnvilMacroSchema = z.looseObject({
-  kind: z.literal("macro_def"),
+  kind: z.literal('macro_def'),
   id: z.string(),
   value: z.number().int(),
   span: AnvilSpanSchema,
@@ -408,7 +409,7 @@ export type AnvilMacro = z.infer<typeof AnvilMacroSchema>;
 //
 
 export const AnvilTypedArgSchema = z.looseObject({
-  kind: z.literal("typed_arg"),
+  kind: z.literal('typed_arg'),
   name: z.string(),
   data_type: AnvilDataTypeSchema.nullable().optional(),
   span: AnvilSpanSchema,
@@ -421,7 +422,7 @@ export type AnvilTypedArg = z.infer<typeof AnvilTypedArgSchema>;
 //
 
 export const AnvilFuncSchema = z.looseObject({
-  kind: z.literal("func_def"),
+  kind: z.literal('func_def'),
   name: z.string(),
   args: z.array(AnvilTypedArgSchema),
   body: AnvilSpannableSchema, // flattened ast_node wrapping an expr
@@ -437,7 +438,7 @@ export type AnvilFunc = z.infer<typeof AnvilFuncSchema>;
 //
 
 export const AnvilRegisterSchema = AnvilSpannableSchema.extend({
-  kind: z.literal("reg_def"),
+  kind: z.literal('reg_def'),
   name: z.string(),
   data_type: AnvilDataTypeSchema,
   init: z.string().nullable().optional(),
@@ -451,11 +452,11 @@ export type AnvilRegister = z.infer<typeof AnvilRegisterSchema>;
 //
 
 export const AnvilEndpointSchema = AnvilSpannableSchema.extend({
-  kind: z.literal("endpoint_def"),
+  kind: z.literal('endpoint_def'),
   name: z.string(),
   channel_class: z.string(),
   channel_params: z.array(AnvilParamValueSchema),
-  dir: z.enum(["left", "right"]),
+  dir: z.enum(['left', 'right']),
   foreign: z.boolean(),
   opp: z.string().nullable().optional(),
 });
@@ -468,12 +469,12 @@ export type AnvilEndpoint = z.infer<typeof AnvilEndpointSchema>;
 //
 
 export const AnvilChannelSchema = AnvilSpannableSchema.extend({
-  kind: z.literal("channel_def"),
+  kind: z.literal('channel_def'),
   channel_class: z.string(),
   channel_params: z.array(AnvilParamValueSchema),
   endpoint_left: z.string(),
   endpoint_right: z.string(),
-  visibility: z.enum(["both_foreign", "left_foreign", "right_foreign"]),
+  visibility: z.enum(['both_foreign', 'left_foreign', 'right_foreign']),
 });
 export type AnvilChannel = z.infer<typeof AnvilChannelSchema>;
 
@@ -484,10 +485,9 @@ export type AnvilChannel = z.infer<typeof AnvilChannelSchema>;
 //
 
 export const AnvilExprSchema = AnvilSpannableSchema.extend({
-  kind: z.literal("expr"),
+  kind: z.literal('expr'),
   type: z.string(),
-})
-.loose();
+}).loose();
 export type AnvilExpr = z.infer<typeof AnvilExprSchema>;
 
 //
@@ -496,7 +496,7 @@ export type AnvilExpr = z.infer<typeof AnvilExprSchema>;
 //
 
 export const AnvilThreadSchema = z.looseObject({
-  kind: z.literal("thread"),
+  kind: z.literal('thread'),
   expr: AnvilExprSchema,
   span: AnvilSpanSchema,
   rst: AnvilMessageSpecifierSchema.nullable(),
@@ -510,22 +510,23 @@ export type AnvilThread = z.infer<typeof AnvilThreadSchema>;
 //
 
 export const AnvilArgsSpawnSchema = z
-  .looseObject({ kind: z.literal("args_spawn") })
+  .looseObject({ kind: z.literal('args_spawn') })
   .and(
-    z.discriminatedUnion("type", [
-      z.looseObject({ type: z.literal("single"), endpoint: z.string() }),
+    z.discriminatedUnion('type', [
+      z.looseObject({ type: z.literal('single'), endpoint: z.string() }),
       z.looseObject({
-        type: z.literal("indexed"),
+        type: z.literal('indexed'),
         endpoint: z.string(),
-        dimensions: z
-          .looseObject({ kind: z.literal("array_index_concrete") }),
+        dimensions: z.looseObject({
+          kind: z.literal('array_index_concrete'),
+        }),
       }),
-    ])
+    ]),
   );
 export type AnvilArgsSpawn = z.infer<typeof AnvilArgsSpawnSchema>;
 
 export const AnvilSpawnDefSchema = z.looseObject({
-  kind: z.literal("spawn_def"),
+  kind: z.literal('spawn_def'),
   proc: z.string(),
   params: z.array(AnvilArgsSpawnSchema),
   compile_params: z.array(AnvilParamValueSchema),
@@ -539,7 +540,7 @@ export type AnvilSpawnDef = z.infer<typeof AnvilSpawnDefSchema>;
 //
 
 export const AnvilSharedVarDefSchema = AnvilSpannableSchema.extend({
-  kind: z.literal("shared_var_def"),
+  kind: z.literal('shared_var_def'),
   ident: z.string(),
   assigning_thread: z.number().int(),
   shared_lifetime: AnvilSigLifetimeSchema,
@@ -552,8 +553,8 @@ export type AnvilSharedVarDef = z.infer<typeof AnvilSharedVarDefSchema>;
 //
 
 export const AnvilProcDefBodyNativeSchema = z.looseObject({
-  kind: z.literal("proc_def_body"),
-  type: z.literal("native"),
+  kind: z.literal('proc_def_body'),
+  type: z.literal('native'),
   channels: z.array(AnvilChannelSchema),
   spawns: z.array(AnvilSpawnDefSchema),
   regs: z.array(AnvilRegisterSchema),
@@ -561,28 +562,30 @@ export const AnvilProcDefBodyNativeSchema = z.looseObject({
   threads: z.array(AnvilThreadSchema),
 });
 
-export type AnvilProcDefBodyNative = z.infer<typeof AnvilProcDefBodyNativeSchema>;
+export type AnvilProcDefBodyNative = z.infer<
+  typeof AnvilProcDefBodyNativeSchema
+>;
 
 export const AnvilProcDefBodyExternSchema = z.looseObject({
-  kind: z.literal("proc_def_body"),
-  type: z.literal("extern"),
+  kind: z.literal('proc_def_body'),
+  type: z.literal('extern'),
   module_name: z.string(),
-  named_ports: z.array(
-    z.looseObject({ name: z.string(), type: z.string() })
-  ),
+  named_ports: z.array(z.looseObject({ name: z.string(), type: z.string() })),
   msg_ports: z.array(
     z.looseObject({
       msg_spec: AnvilMessageSpecifierSchema,
       data_port: z.string().nullable(),
       valid_port: z.string().nullable(),
       ack_port: z.string().nullable(),
-    })
+    }),
   ),
 });
 
-export type AnvilProcDefBodyExtern = z.infer<typeof AnvilProcDefBodyExternSchema>;
+export type AnvilProcDefBodyExtern = z.infer<
+  typeof AnvilProcDefBodyExternSchema
+>;
 
-export const AnvilProcBodySchema = z.discriminatedUnion("type", [
+export const AnvilProcBodySchema = z.discriminatedUnion('type', [
   AnvilProcDefBodyNativeSchema,
   AnvilProcDefBodyExternSchema,
 ]);
@@ -595,7 +598,7 @@ export type AnvilProcBody = z.infer<typeof AnvilProcBodySchema>;
 //
 
 export const AnvilProcSchema = z.looseObject({
-  kind: z.literal("proc_def"),
+  kind: z.literal('proc_def'),
   name: z.string(),
   args: z.array(AnvilEndpointSchema),
   body: AnvilProcBodySchema,
@@ -611,7 +614,7 @@ export type AnvilProc = z.infer<typeof AnvilProcSchema>;
 //
 
 export const AnvilImportDirectiveSchema = z.looseObject({
-  kind: z.literal("import_directive"),
+  kind: z.literal('import_directive'),
   file_name: z.string(),
   is_extern: z.boolean(),
   span: AnvilSpanSchema,
@@ -637,13 +640,13 @@ export const AnvilEventGraphSchema = z.looseObject({
               z.looseObject({
                 tid: z.number().int(),
                 eid: z.number().int(),
-              })
+              }),
             )
             .optional(),
-        })
+        }),
       ),
       span: AnvilSpanSchema,
-    })
+    }),
   ),
 });
 export type AnvilEventGraph = z.infer<typeof AnvilEventGraphSchema>;
@@ -656,11 +659,8 @@ export type AnvilEventGraph = z.infer<typeof AnvilEventGraphSchema>;
 
 export const AnvilCompUnitSchema = z.looseObject({
   schema: AnvilAstSchemaVersionStringSchema,
-  kind: z.literal("compilation_unit"),
-  file_name: z
-    .string()
-    .nullable()
-    .optional(),
+  kind: z.literal('compilation_unit'),
+  file_name: z.string().nullable().optional(),
   channel_classes: z.array(AnvilChannelClassSchema),
   type_defs: z.array(AnvilTypeSchema),
   macro_defs: z.array(AnvilMacroSchema),

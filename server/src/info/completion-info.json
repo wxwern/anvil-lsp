@@ -137,7 +137,7 @@
       "category": ["declaration", "param_type"],
       "hint": ["declaration", "type"],
       "lspKind": "Keyword",
-      "astKind": ["type_def", null ],
+      "astKind": ["type_def", null],
       "description": [
         null,
         "The kind keyword for a type parameter. Used in parameter lists to declare a parameter that takes a type value.\n\n**Example:**\n\n```anvil\nproc P<T : type>(ep : left Ch) { ... }\ntype Vec<T : type, N : int> = T[N];\n```"
@@ -366,7 +366,6 @@
   },
 
   "timingCompletions": {
-
     "_comment": "Fixed completion entries for the timing annotation heuristic context (inside a channel class message definition after '@'). Split into two sub-sections: 'lifetime' entries appear after the first '@' inside the payload parentheses, and 'sync' entries appear after the closing ')' when adding a sync-mode annotation.",
 
     "_substitutionPatterns": {
@@ -444,6 +443,5 @@
         "description": "**Dependent synchronization**: The message is sent/received `N` cycles after the referenced message `%s`."
       }
     }
-
   }
 }

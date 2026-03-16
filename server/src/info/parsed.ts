@@ -16,24 +16,20 @@ import astNodeInfoJson from './ast-node-info.json';
 import { AnvilAstNode } from '../core/ast/AnvilAst';
 import { AnvilLiteralSchema, AnvilTypeSchema } from '../core/ast/schema';
 
-
-
 //
 // HELPERS
 //
 
 function validate<T>(schema: z.ZodType<T>, data: unknown, filePath: string): T {
-	const result = schema.safeParse(data);
-	if (!result.success) {
-		const issues = result.error.issues
-			.map(i => `  - ${i.path.join('.')}: ${i.message}`)
-			.join('\n');
-		throw new Error(`Schema validation failed for ${filePath}:\n${issues}`);
-	}
-	return result.data;
+  const result = schema.safeParse(data);
+  if (!result.success) {
+    const issues = result.error.issues
+      .map((i) => `  - ${i.path.join('.')}: ${i.message}`)
+      .join('\n');
+    throw new Error(`Schema validation failed for ${filePath}:\n${issues}`);
+  }
+  return result.data;
 }
-
-
 
 //
 // SCOPE VALUE
@@ -46,17 +42,16 @@ function validate<T>(schema: z.ZodType<T>, data: unknown, filePath: string): T {
 //
 
 export type ScopeValue =
-	| { kind: 'global' }
-	| { kind: 'delimited'; open: string; close: string }
-	| { kind: 'astNode'; nodeKind: string };
+  | { kind: 'global' }
+  | { kind: 'delimited'; open: string; close: string }
+  | { kind: 'astNode'; nodeKind: string };
 
 function parseScopeValue(raw: string | null): ScopeValue {
-	if (raw === null) return { kind: 'global' };
-	if (raw.length === 2) return { kind: 'delimited', open: raw[0], close: raw[1] };
-	return { kind: 'astNode', nodeKind: raw };
+  if (raw === null) return { kind: 'global' };
+  if (raw.length === 2)
+    return { kind: 'delimited', open: raw[0], close: raw[1] };
+  return { kind: 'astNode', nodeKind: raw };
 }
-
-
 
 //
 // KEYWORD VARIANT EXPANSION
@@ -69,64 +64,60 @@ function parseScopeValue(raw: string | null): ScopeValue {
 //
 
 export interface KeywordInfoEntryVariant {
-	/** Completion category (e.g. "modifier", "declaration", "control"). */
-	category: string;
-	/** Display hint text. */
-	hint: string;
-	/** LSP completion kind for this variant (e.g. "Keyword"). */
-	lspKind: string;
-	/** Associated AST node kind, or null if not applicable. */
-	astKind: string | null;
-	/** Markdown documentation string, or null if absent. */
-	description: string | null;
-	/** A snippet that can be inserted to complete a template pattern, or null if not applicable. */
-	snippet: string | null;
-	/**
-	 * Where this variant is valid.
-	 * Both an absent scope field and an explicit JSON null mean top-level
-	 * global scope (`{ kind: 'global' }`).
-	 */
-	scope: ScopeValue;
+  /** Completion category (e.g. "modifier", "declaration", "control"). */
+  category: string;
+  /** Display hint text. */
+  hint: string;
+  /** LSP completion kind for this variant (e.g. "Keyword"). */
+  lspKind: string;
+  /** Associated AST node kind, or null if not applicable. */
+  astKind: string | null;
+  /** Markdown documentation string, or null if absent. */
+  description: string | null;
+  /** A snippet that can be inserted to complete a template pattern, or null if not applicable. */
+  snippet: string | null;
+  /**
+   * Where this variant is valid.
+   * Both an absent scope field and an explicit JSON null mean top-level
+   * global scope (`{ kind: 'global' }`).
+   */
+  scope: ScopeValue;
 }
-
-
 
 //
 // EXPORTED TYPES
 //
 
 export interface CompletionKindInfoEntry {
-	hint: string;
-	lspKind: string;
+  hint: string;
+  lspKind: string;
 }
 
 export interface KeywordInfoEntry {
-	/**
-	 * One or more variants produced by expanding parallel arrays in the source.
-	 * A keyword with no array fields always has exactly one variant.
-	 */
-	variants: KeywordInfoEntryVariant[];
+  /**
+   * One or more variants produced by expanding parallel arrays in the source.
+   * A keyword with no array fields always has exactly one variant.
+   */
+  variants: KeywordInfoEntryVariant[];
 }
 
 export interface TimingInfoEntry {
-	hint: string;
-	insertText: string;
-	lspKind: string;
-	/** Associated AST node kind, or null if absent. */
-	astKind: string | null;
-	description: string | null;
+  hint: string;
+  insertText: string;
+  lspKind: string;
+  /** Associated AST node kind, or null if absent. */
+  astKind: string | null;
+  description: string | null;
 }
 
 export interface AstNodeInfoEntry {
-	name: string;
-	description: string;
-	/** Anvil code examples for this node, or null when none are provided. */
-	examples: string | null;
-	/** True for internal/compiler-only nodes that are not user-facing. */
-	internal: boolean;
+  name: string;
+  description: string;
+  /** Anvil code examples for this node, or null when none are provided. */
+  examples: string | null;
+  /** True for internal/compiler-only nodes that are not user-facing. */
+  internal: boolean;
 }
-
-
 
 //
 // RAW ZOD SCHEMAS
@@ -136,67 +127,64 @@ export interface AstNodeInfoEntry {
 // --- completion-info.json ---
 
 const RawCompletionKindEntrySchema = z.object({
-	hint: z.string(),
-	lspKind: z.string(),
+  hint: z.string(),
+  lspKind: z.string(),
 });
 
 // --- ast-node-info.json ---
 
 const Nullable = <T extends z.ZodTypeAny>(t: T) => t.nullable();
 const ScalarOrArray = <T extends z.ZodTypeAny>(t: T) =>
-	z.union([t, z.array(t)]);
+  z.union([t, z.array(t)]);
 const NullableScalarOrArray = <T extends z.ZodTypeAny>(t: T) =>
-	z.union([Nullable(t), z.array(Nullable(t))]);
+  z.union([Nullable(t), z.array(Nullable(t))]);
 
 const RawKeywordEntrySchema = z.object({
-	category:    ScalarOrArray(z.string()),
-	hint:        ScalarOrArray(z.string()),
-	lspKind:     ScalarOrArray(z.string()),
-	astKind:     NullableScalarOrArray(z.string()).optional(),
-	description: NullableScalarOrArray(z.string()).optional(),
-	snippet:     NullableScalarOrArray(z.string()).optional(),
-	scope:       NullableScalarOrArray(z.string()).optional(),
+  category: ScalarOrArray(z.string()),
+  hint: ScalarOrArray(z.string()),
+  lspKind: ScalarOrArray(z.string()),
+  astKind: NullableScalarOrArray(z.string()).optional(),
+  description: NullableScalarOrArray(z.string()).optional(),
+  snippet: NullableScalarOrArray(z.string()).optional(),
+  scope: NullableScalarOrArray(z.string()).optional(),
 });
 
 const RawTimingEntrySchema = z.object({
-	hint:        z.string(),
-	insertText:  z.string(),
-	lspKind:     z.string(),
-	astKind:     z.string().optional(),
-	description: z.string().optional(),
+  hint: z.string(),
+  insertText: z.string(),
+  lspKind: z.string(),
+  astKind: z.string().optional(),
+  description: z.string().optional(),
 });
 
 const RawCompletionInfoSchema = z.object({
-	kind: z.record(
-		z.string(),
-		z.union([z.string(), RawCompletionKindEntrySchema])
-	),
-	builtInKeywordCompletions: z.record(
-		z.string(),
-		z.union([z.string(), RawKeywordEntrySchema])
-	),
-	timingCompletions: z.object({
-		_substitutionPatterns:  z.record(z.string(), z.unknown()).optional(),
-		lifetime:               z.record(z.string(), RawTimingEntrySchema),
-		sync:                   z.record(z.string(), RawTimingEntrySchema),
-	}).optional(),
+  kind: z.record(
+    z.string(),
+    z.union([z.string(), RawCompletionKindEntrySchema]),
+  ),
+  builtInKeywordCompletions: z.record(
+    z.string(),
+    z.union([z.string(), RawKeywordEntrySchema]),
+  ),
+  timingCompletions: z
+    .object({
+      _substitutionPatterns: z.record(z.string(), z.unknown()).optional(),
+      lifetime: z.record(z.string(), RawTimingEntrySchema),
+      sync: z.record(z.string(), RawTimingEntrySchema),
+    })
+    .optional(),
 });
 
 const RawAstNodeEntrySchema = z.object({
-	name:        z.string(),
-	description: z.string(),
-	examples:    z.string().optional(),
-	internal:    z.boolean().optional(),
+  name: z.string(),
+  description: z.string(),
+  examples: z.string().optional(),
+  internal: z.boolean().optional(),
 });
 
 const RawAstNodeInfoSchema = z.object({
-	kind: z.record(
-		z.string(),
-		z.union([z.string(), RawAstNodeEntrySchema])
-	),
+  kind: z.record(z.string(), z.union([z.string(), RawAstNodeEntrySchema])),
 });
-
-
 
 //
 // VARIANT EXPANSION
@@ -212,11 +200,11 @@ type NullableStringOrArray = string | null | (string | null)[];
  * distinguish "field missing" from "field present with null element".
  */
 function toNullableArray(
-	value: NullableStringOrArray | undefined
+  value: NullableStringOrArray | undefined,
 ): (string | null)[] | undefined {
-	if (value === undefined) return undefined;
-	if (Array.isArray(value)) return value;
-	return [value];
+  if (value === undefined) return undefined;
+  if (Array.isArray(value)) return value;
+  return [value];
 }
 
 /**
@@ -232,68 +220,82 @@ function toNullableArray(
  *
  * Throws if two fields with length > 1 disagree on length.
  */
-function expandKeywordVariants(keyword: string, raw: RawKeyword): KeywordInfoEntryVariant[] {
-	// Gather raw arrays; undefined means the field was absent.
-	const rawCategories    = toNullableArray(raw.category    as NullableStringOrArray);
-	const rawHints         = toNullableArray(raw.hint        as NullableStringOrArray);
-	const rawLspKinds      = toNullableArray(raw.lspKind     as NullableStringOrArray);
-	const rawAstKinds      = toNullableArray(raw.astKind     as NullableStringOrArray | undefined);
-	const rawDescriptions  = toNullableArray(raw.description as NullableStringOrArray | undefined);
-	const rawSnippets      = toNullableArray(raw.snippet     as NullableStringOrArray | undefined);
-	const rawScopes        = toNullableArray(raw.scope       as NullableStringOrArray | undefined);
+function expandKeywordVariants(
+  keyword: string,
+  raw: RawKeyword,
+): KeywordInfoEntryVariant[] {
+  // Gather raw arrays; undefined means the field was absent.
+  const rawCategories = toNullableArray(raw.category as NullableStringOrArray);
+  const rawHints = toNullableArray(raw.hint as NullableStringOrArray);
+  const rawLspKinds = toNullableArray(raw.lspKind as NullableStringOrArray);
+  const rawAstKinds = toNullableArray(
+    raw.astKind as NullableStringOrArray | undefined,
+  );
+  const rawDescriptions = toNullableArray(
+    raw.description as NullableStringOrArray | undefined,
+  );
+  const rawSnippets = toNullableArray(
+    raw.snippet as NullableStringOrArray | undefined,
+  );
+  const rawScopes = toNullableArray(
+    raw.scope as NullableStringOrArray | undefined,
+  );
 
-	// Find multi-element arrays to determine N.
-	const multiLengths: { field: string; len: number }[] = [];
-	for (const [field, arr] of [
-		['category',    rawCategories],
-		['hint',        rawHints],
-		['lspKind',     rawLspKinds],
-		['astKind',     rawAstKinds],
-		['description', rawDescriptions],
-		['snippet',     rawSnippets],
-		['scope',       rawScopes],
-	] as [string, (string | null)[] | undefined][]) {
-		if (arr !== undefined && arr.length > 1) multiLengths.push({ field, len: arr.length });
-	}
+  // Find multi-element arrays to determine N.
+  const multiLengths: { field: string; len: number }[] = [];
+  for (const [field, arr] of [
+    ['category', rawCategories],
+    ['hint', rawHints],
+    ['lspKind', rawLspKinds],
+    ['astKind', rawAstKinds],
+    ['description', rawDescriptions],
+    ['snippet', rawSnippets],
+    ['scope', rawScopes],
+  ] as [string, (string | null)[] | undefined][]) {
+    if (arr !== undefined && arr.length > 1)
+      multiLengths.push({ field, len: arr.length });
+  }
 
-	const distinctMulti = [...new Set(multiLengths.map(x => x.len))];
-	if (distinctMulti.length > 1) {
-		const detail = multiLengths.map(x => `${x.field}[${x.len}]`).join(', ');
-		throw new Error(
-			`completion-info.json: keyword "${keyword}" has mismatched array lengths: ${detail}`
-		);
-	}
-	const N = distinctMulti[0] ?? 1;
+  const distinctMulti = [...new Set(multiLengths.map((x) => x.len))];
+  if (distinctMulti.length > 1) {
+    const detail = multiLengths.map((x) => `${x.field}[${x.len}]`).join(', ');
+    throw new Error(
+      `completion-info.json: keyword "${keyword}" has mismatched array lengths: ${detail}`,
+    );
+  }
+  const N = distinctMulti[0] ?? 1;
 
-	/**
-	 * Broadcast a nullable field array to length N.
-	 *   - absent (undefined)        N repetitions of null
-	 *   - scalar (length 1)         N repetitions of that value
-	 *   - array of length N         used as-is
-	 */
-	function broadcastNullable(arr: (string | null)[] | undefined): (string | null)[] {
-		if (arr === undefined) return Array(N).fill(null);
-		if (arr.length === 1)  return Array(N).fill(arr[0]);
-		return arr;
-	}
+  /**
+   * Broadcast a nullable field array to length N.
+   *   - absent (undefined)        N repetitions of null
+   *   - scalar (length 1)         N repetitions of that value
+   *   - array of length N         used as-is
+   */
+  function broadcastNullable(
+    arr: (string | null)[] | undefined,
+  ): (string | null)[] {
+    if (arr === undefined) return Array(N).fill(null);
+    if (arr.length === 1) return Array(N).fill(arr[0]);
+    return arr;
+  }
 
-	const categories   = broadcastNullable(rawCategories);
-	const hints        = broadcastNullable(rawHints);
-	const lspKinds     = broadcastNullable(rawLspKinds);
-	const astKinds     = broadcastNullable(rawAstKinds);
-	const descriptions = broadcastNullable(rawDescriptions);
-	const snippets     = broadcastNullable(rawSnippets);
-	const scopes       = broadcastNullable(rawScopes);
+  const categories = broadcastNullable(rawCategories);
+  const hints = broadcastNullable(rawHints);
+  const lspKinds = broadcastNullable(rawLspKinds);
+  const astKinds = broadcastNullable(rawAstKinds);
+  const descriptions = broadcastNullable(rawDescriptions);
+  const snippets = broadcastNullable(rawSnippets);
+  const scopes = broadcastNullable(rawScopes);
 
-	return Array.from({ length: N }, (_, i) => ({
-		category:    categories[i]   as string,  // required, never null
-		hint:        hints[i]        as string,  // required, never null
-		lspKind:     lspKinds[i]     as string,  // required, never null
-		astKind:     astKinds[i],
-		snippet:     snippets[i],
-		description: descriptions[i],
-		scope: parseScopeValue(scopes[i]),
-	}));
+  return Array.from({ length: N }, (_, i) => ({
+    category: categories[i] as string, // required, never null
+    hint: hints[i] as string, // required, never null
+    lspKind: lspKinds[i] as string, // required, never null
+    astKind: astKinds[i],
+    snippet: snippets[i],
+    description: descriptions[i],
+    scope: parseScopeValue(scopes[i]),
+  }));
 }
 
 //
@@ -301,216 +303,252 @@ function expandKeywordVariants(keyword: string, raw: RawKeyword): KeywordInfoEnt
 //
 
 export class CompletionInfo {
-	private readonly kindMap:          ReadonlyMap<string, CompletionKindInfoEntry>;
-	private readonly keywordMap:       ReadonlyMap<string, KeywordInfoEntry>;
-	private readonly lifetimeTimingMap: ReadonlyMap<string, TimingInfoEntry>;
-	private readonly syncTimingMap:    ReadonlyMap<string, TimingInfoEntry>;
+  private readonly kindMap: ReadonlyMap<string, CompletionKindInfoEntry>;
+  private readonly keywordMap: ReadonlyMap<string, KeywordInfoEntry>;
+  private readonly lifetimeTimingMap: ReadonlyMap<string, TimingInfoEntry>;
+  private readonly syncTimingMap: ReadonlyMap<string, TimingInfoEntry>;
 
-	/**
-	 * @param raw     Validated completion-info JSON.
-	 * @param nodeInfo Optional AstNodeInfo instance used to back-fill missing
-	 *                 descriptions from AST node documentation.  When an entry
-	 *                 has a non-null `astKind` but a null `description`, the
-	 *                 description is resolved from `nodeInfo` automatically.
-	 */
-	constructor(raw: z.infer<typeof RawCompletionInfoSchema>, nodeInfo?: AstNodeInfo) {
-		/**
-		 * Look up the description for an astKind string (e.g. "proc_def" or
-		 * "expr/if_expr") from the provided AstNodeInfo, if any.
-		 */
-		function resolveDescription(astKind: string | null, explicit: string | null): string | null {
-			if (explicit !== null) return explicit;
-			if (astKind === null || nodeInfo === undefined) return null;
-			const slashIdx = astKind.indexOf('/');
-			const entry = slashIdx === -1
-				? nodeInfo.getFrom(astKind)
-				: nodeInfo.getFrom(astKind.slice(0, slashIdx), astKind.slice(slashIdx + 1));
-			return entry?.description ?? null;
-		}
+  /**
+   * @param raw     Validated completion-info JSON.
+   * @param nodeInfo Optional AstNodeInfo instance used to back-fill missing
+   *                 descriptions from AST node documentation.  When an entry
+   *                 has a non-null `astKind` but a null `description`, the
+   *                 description is resolved from `nodeInfo` automatically.
+   */
+  constructor(
+    raw: z.infer<typeof RawCompletionInfoSchema>,
+    nodeInfo?: AstNodeInfo,
+  ) {
+    /**
+     * Look up the description for an astKind string (e.g. "proc_def" or
+     * "expr/if_expr") from the provided AstNodeInfo, if any.
+     */
+    function resolveDescription(
+      astKind: string | null,
+      explicit: string | null,
+    ): string | null {
+      if (explicit !== null) return explicit;
+      if (astKind === null || nodeInfo === undefined) return null;
+      const slashIdx = astKind.indexOf('/');
+      const entry =
+        slashIdx === -1
+          ? nodeInfo.getFrom(astKind)
+          : nodeInfo.getFrom(
+              astKind.slice(0, slashIdx),
+              astKind.slice(slashIdx + 1),
+            );
+      return entry?.description ?? null;
+    }
 
-		// kind map - strip plain-string comment entries
-		const kindEntries: [string, CompletionKindInfoEntry][] = [];
-		for (const [k, v] of Object.entries(raw.kind)) {
-			if (typeof v === 'string') continue;
-			kindEntries.push([k, { hint: v.hint, lspKind: v.lspKind }]);
-		}
-		this.kindMap = new Map(kindEntries);
+    // kind map - strip plain-string comment entries
+    const kindEntries: [string, CompletionKindInfoEntry][] = [];
+    for (const [k, v] of Object.entries(raw.kind)) {
+      if (typeof v === 'string') continue;
+      kindEntries.push([k, { hint: v.hint, lspKind: v.lspKind }]);
+    }
+    this.kindMap = new Map(kindEntries);
 
-		// keyword map - strip comment entries, expand variants
-		const keywordEntries: [string, KeywordInfoEntry][] = [];
-		for (const [k, v] of Object.entries(raw.builtInKeywordCompletions)) {
-			if (typeof v === 'string') continue;
-			const variants = expandKeywordVariants(k, v).map(variant => ({
-				...variant,
-				description: resolveDescription(variant.astKind, variant.description),
-			}));
-			keywordEntries.push([k, { variants }]);
-		}
-		this.keywordMap = new Map(keywordEntries);
+    // keyword map - strip comment entries, expand variants
+    const keywordEntries: [string, KeywordInfoEntry][] = [];
+    for (const [k, v] of Object.entries(raw.builtInKeywordCompletions)) {
+      if (typeof v === 'string') continue;
+      const variants = expandKeywordVariants(k, v).map((variant) => ({
+        ...variant,
+        description: resolveDescription(variant.astKind, variant.description),
+      }));
+      keywordEntries.push([k, { variants }]);
+    }
+    this.keywordMap = new Map(keywordEntries);
 
-		// timing maps
-		const lifetimeEntries: [string, TimingInfoEntry][] = [];
-		const syncEntries: [string, TimingInfoEntry][] = [];
-		if (raw.timingCompletions) {
-			for (const [k, v] of Object.entries(raw.timingCompletions.lifetime)) {
-				const astKind = v.astKind ?? null;
-				lifetimeEntries.push([k, {
-					hint: v.hint, insertText: v.insertText, lspKind: v.lspKind,
-					astKind,
-					description: resolveDescription(astKind, v.description ?? null),
-				}]);
-			}
-			for (const [k, v] of Object.entries(raw.timingCompletions.sync)) {
-				const astKind = v.astKind ?? null;
-				syncEntries.push([k, {
-					hint: v.hint, insertText: v.insertText, lspKind: v.lspKind,
-					astKind,
-					description: resolveDescription(astKind, v.description ?? null),
-				}]);
-			}
-		}
-		this.lifetimeTimingMap = new Map(lifetimeEntries);
-		this.syncTimingMap     = new Map(syncEntries);
-	}
+    // timing maps
+    const lifetimeEntries: [string, TimingInfoEntry][] = [];
+    const syncEntries: [string, TimingInfoEntry][] = [];
+    if (raw.timingCompletions) {
+      for (const [k, v] of Object.entries(raw.timingCompletions.lifetime)) {
+        const astKind = v.astKind ?? null;
+        lifetimeEntries.push([
+          k,
+          {
+            hint: v.hint,
+            insertText: v.insertText,
+            lspKind: v.lspKind,
+            astKind,
+            description: resolveDescription(astKind, v.description ?? null),
+          },
+        ]);
+      }
+      for (const [k, v] of Object.entries(raw.timingCompletions.sync)) {
+        const astKind = v.astKind ?? null;
+        syncEntries.push([
+          k,
+          {
+            hint: v.hint,
+            insertText: v.insertText,
+            lspKind: v.lspKind,
+            astKind,
+            description: resolveDescription(astKind, v.description ?? null),
+          },
+        ]);
+      }
+    }
+    this.lifetimeTimingMap = new Map(lifetimeEntries);
+    this.syncTimingMap = new Map(syncEntries);
+  }
 
-	/** LSP completion metadata for an AST node kind. Returns `null` if absent. */
-	getKindMetadata(kind: string | AnvilAstNode | null, type?: string | null): CompletionKindInfoEntry | null {
-		if (kind instanceof AnvilAstNode) {
-			const node = kind;
-			if (!node.kind) return null;
+  /** LSP completion metadata for an AST node kind. Returns `null` if absent. */
+  getKindMetadata(
+    kind: string | AnvilAstNode | null,
+    type?: string | null,
+  ): CompletionKindInfoEntry | null {
+    if (kind instanceof AnvilAstNode) {
+      const node = kind;
+      if (!node.kind) return null;
 
-			let result = this.getKindMetadata(kind.kind, kind.type);
+      let result = this.getKindMetadata(kind.kind, kind.type);
 
-			const typedef = node.resolveAs(AnvilTypeSchema);
-			if (typedef) {
-				const dataType = typedef.data_type;
-				switch (dataType.type) {
-					case 'record':
-					case 'variant': {
-						result = this.getKindMetadata(dataType.kind, dataType.type) ?? result;
-					}
-				}
-			}
+      const typedef = node.resolveAs(AnvilTypeSchema);
+      if (typedef) {
+        const dataType = typedef.data_type;
+        switch (dataType.type) {
+          case 'record':
+          case 'variant': {
+            result =
+              this.getKindMetadata(dataType.kind, dataType.type) ?? result;
+          }
+        }
+      }
 
-			return result;
-		}
+      return result;
+    }
 
-		if (!!type) {
-			const combined = `${kind}/${type}`;
-			const entry = this.kindMap.get(combined);
-			if (entry) return entry;
-		}
-		if (!!kind) {
-			return this.kindMap.get(kind) ?? null;
-		}
-		return null;
-	}
+    if (type) {
+      const combined = `${kind}/${type}`;
+      const entry = this.kindMap.get(combined);
+      if (entry) return entry;
+    }
+    if (kind) {
+      return this.kindMap.get(kind) ?? null;
+    }
+    return null;
+  }
 
-	/**
-	 * Keyword completion data for a built-in keyword. Returns `null` if absent.
-	 * Use `.variants` to iterate all expanded variants.
-	 */
-	getKeywordMetadata(keyword: string): KeywordInfoEntry | null {
-		return this.keywordMap.get(keyword) ?? null;
-	}
+  /**
+   * Keyword completion data for a built-in keyword. Returns `null` if absent.
+   * Use `.variants` to iterate all expanded variants.
+   */
+  getKeywordMetadata(keyword: string): KeywordInfoEntry | null {
+    return this.keywordMap.get(keyword) ?? null;
+  }
 
-	/** Timing completion entry for a lifetime pattern key (e.g. `"#N"`, `"eternal"`). */
-	getLifetimeTimingEntry(key: string): TimingInfoEntry | null {
-		return this.lifetimeTimingMap.get(key) ?? null;
-	}
+  /** Timing completion entry for a lifetime pattern key (e.g. `"#N"`, `"eternal"`). */
+  getLifetimeTimingEntry(key: string): TimingInfoEntry | null {
+    return this.lifetimeTimingMap.get(key) ?? null;
+  }
 
-	/** Timing completion entry for a sync pattern key (e.g. `"dyn"`, `"#N"`). */
-	getSyncTimingEntry(key: string): TimingInfoEntry | null {
-		return this.syncTimingMap.get(key) ?? null;
-	}
+  /** Timing completion entry for a sync pattern key (e.g. `"dyn"`, `"#N"`). */
+  getSyncTimingEntry(key: string): TimingInfoEntry | null {
+    return this.syncTimingMap.get(key) ?? null;
+  }
 
-	/** All AST node kind strings present in the kind table. */
-	get knownKinds(): string[] { return Array.from(this.kindMap.keys()); }
+  /** All AST node kind strings present in the kind table. */
+  get knownKinds(): string[] {
+    return Array.from(this.kindMap.keys());
+  }
 
-	/** All built-in keyword strings. */
-	get knownKeywords(): string[] { return Array.from(this.keywordMap.keys()); }
+  /** All built-in keyword strings. */
+  get knownKeywords(): string[] {
+    return Array.from(this.keywordMap.keys());
+  }
 
-	/** All pattern keys in the lifetime timing section. */
-	get knownLifetimeTimingKeys(): string[] { return Array.from(this.lifetimeTimingMap.keys()); }
+  /** All pattern keys in the lifetime timing section. */
+  get knownLifetimeTimingKeys(): string[] {
+    return Array.from(this.lifetimeTimingMap.keys());
+  }
 
-	/** All pattern keys in the sync timing section. */
-	get knownSyncTimingKeys(): string[] { return Array.from(this.syncTimingMap.keys()); }
+  /** All pattern keys in the sync timing section. */
+  get knownSyncTimingKeys(): string[] {
+    return Array.from(this.syncTimingMap.keys());
+  }
 }
 
 export class AstNodeInfo {
-	private readonly nodeMap: ReadonlyMap<string, AstNodeInfoEntry>;
+  private readonly nodeMap: ReadonlyMap<string, AstNodeInfoEntry>;
 
-	constructor(raw: z.infer<typeof RawAstNodeInfoSchema>) {
-		const entries: [string, AstNodeInfoEntry][] = [];
-		for (const [k, v] of Object.entries(raw.kind)) {
-			if (typeof v === 'string') continue;
-		entries.push([k, {
-			name:        v.name,
-			description: v.description,
-			examples:    v.examples ?? null,
-			internal:    v.internal ?? false,
-		}]);
-		}
-		this.nodeMap = new Map(entries);
-	}
+  constructor(raw: z.infer<typeof RawAstNodeInfoSchema>) {
+    const entries: [string, AstNodeInfoEntry][] = [];
+    for (const [k, v] of Object.entries(raw.kind)) {
+      if (typeof v === 'string') continue;
+      entries.push([
+        k,
+        {
+          name: v.name,
+          description: v.description,
+          examples: v.examples ?? null,
+          internal: v.internal ?? false,
+        },
+      ]);
+    }
+    this.nodeMap = new Map(entries);
+  }
 
-	/**
-	 * Look up info for an AST node by kind, optionally with a type discriminator.
-	 *
-	 * The lookup key is `kind` alone when `type` is omitted, or `"${kind}/${type}"`
-	 * when provided - matching the pattern documented in ast-node-info.json.
-	 *
-	 * Returns `null` if not found.
-	 *
-	 * @example
-	 *   getFrom('proc_def')        // { name: 'process', ... }
-	 *   getFrom('expr', 'binop')   // { name: 'binary operator', ... }
-	 */
-	getFrom(kind: string, type?: string | null): AstNodeInfoEntry | null {
-		const key = type ? `${kind}/${type}` : kind;
-		return this.nodeMap.get(key) ?? null;
-	}
-	/**
-	 * Look up info for an AST node by itself.
-	 *
-	 * This intelligently extracts the most useful lookup keys.
-	 *
-	 * Returns `null` if not found.
-	 */
-	getFor(node: AnvilAstNode): AstNodeInfoEntry | null {
-		if (!node.kind) return null;
+  /**
+   * Look up info for an AST node by kind, optionally with a type discriminator.
+   *
+   * The lookup key is `kind` alone when `type` is omitted, or `"${kind}/${type}"`
+   * when provided - matching the pattern documented in ast-node-info.json.
+   *
+   * Returns `null` if not found.
+   *
+   * @example
+   *   getFrom('proc_def')        // { name: 'process', ... }
+   *   getFrom('expr', 'binop')   // { name: 'binary operator', ... }
+   */
+  getFrom(kind: string, type?: string | null): AstNodeInfoEntry | null {
+    const key = type ? `${kind}/${type}` : kind;
+    return this.nodeMap.get(key) ?? null;
+  }
+  /**
+   * Look up info for an AST node by itself.
+   *
+   * This intelligently extracts the most useful lookup keys.
+   *
+   * Returns `null` if not found.
+   */
+  getFor(node: AnvilAstNode): AstNodeInfoEntry | null {
+    if (!node.kind) return null;
 
-		let result = this.getFrom(node.kind, node.type);
+    let result = this.getFrom(node.kind, node.type);
 
-		const typedef = node.resolveAs(AnvilTypeSchema);
+    const typedef = node.resolveAs(AnvilTypeSchema);
 
-		if (typedef) {
-			const dataType = typedef.data_type;
-			switch (dataType.type) {
-				case 'record':
-				case 'variant': {
-					result = this.getFrom(dataType.kind, dataType.type) ?? result;
-				}
-			}
-		}
+    if (typedef) {
+      const dataType = typedef.data_type;
+      switch (dataType.type) {
+        case 'record':
+        case 'variant': {
+          result = this.getFrom(dataType.kind, dataType.type) ?? result;
+        }
+      }
+    }
 
-		const literal = node
-			.satisfyingKind("expr")
-			?.satisfyingType("literal")
-			?.down("value")
-			.resolveAs(AnvilLiteralSchema);
+    const literal = node
+      .satisfyingKind('expr')
+      ?.satisfyingType('literal')
+      ?.down('value')
+      .resolveAs(AnvilLiteralSchema);
 
-		if (literal) {
-			result = this.getFrom(literal.kind, literal.type) ?? result;
-		}
+    if (literal) {
+      result = this.getFrom(literal.kind, literal.type) ?? result;
+    }
 
-		return result;
-	}
+    return result;
+  }
 
-	/** All lookup keys stored in this table (`"kind"` or `"kind/type"` strings). */
-	get knownKeys(): string[] { return Array.from(this.nodeMap.keys()); }
+  /** All lookup keys stored in this table (`"kind"` or `"kind/type"` strings). */
+  get knownKeys(): string[] {
+    return Array.from(this.nodeMap.keys());
+  }
 }
-
 
 //
 // MODULE-LEVEL INITIALISATION
@@ -518,15 +556,15 @@ export class AstNodeInfo {
 //
 
 const _rawCompletionInfo = validate(
-	RawCompletionInfoSchema,
-	completionInfoJson,
-	'completion-info.json'
+  RawCompletionInfoSchema,
+  completionInfoJson,
+  'completion-info.json',
 );
 
 const _rawAstNodeInfo = validate(
-	RawAstNodeInfoSchema,
-	astNodeInfoJson,
-	'ast-node-info.json'
+  RawAstNodeInfoSchema,
+  astNodeInfoJson,
+  'ast-node-info.json',
 );
 
 /** Pre-validated, typesafe access to `ast-node-info.json`. */
@@ -537,4 +575,7 @@ export const astNodeInfo = new AstNodeInfo(_rawAstNodeInfo);
  * Missing descriptions are automatically back-filled from `astNodeInfo`
  * when the entry carries a non-null `astKind`.
  */
-export const completionInfo = new CompletionInfo(_rawCompletionInfo, astNodeInfo);
+export const completionInfo = new CompletionInfo(
+  _rawCompletionInfo,
+  astNodeInfo,
+);

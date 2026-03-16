@@ -1,9 +1,9 @@
-
 const AST_SCHEMA_VERSION_REGEX = /^v(\d+)\.(\d+)\.(\d+)(-wip\.(\d+))?$/;
 
 export function parseAstSchemaVersion(versionStr: string) {
   const matches = versionStr.match(AST_SCHEMA_VERSION_REGEX);
-  if (!matches) throw new Error(`Invalid AST schema version string: ${versionStr}.`);
+  if (!matches)
+    throw new Error(`Invalid AST schema version string: ${versionStr}.`);
 
   const [_, majorStr, minorStr, patchStr, _wipLabel, wipPart] = matches;
   return {
@@ -12,7 +12,7 @@ export function parseAstSchemaVersion(versionStr: string) {
     patch: parseInt(patchStr, 10),
     wip_build: wipPart ? parseInt(wipPart, 10) : undefined,
   };
-};
+}
 
 /**
  * Compares two AST schema versions.
@@ -36,7 +36,10 @@ export function compareAstSchemaVersions(
 /**
  * Checks if the input AST schema version is compatible with the required version.
  */
-export function isAstSchemaVersionCompatible(inputVersion: string, requiredVersion: string) {
+export function isAstSchemaVersionCompatible(
+  inputVersion: string,
+  requiredVersion: string,
+) {
   const i = parseAstSchemaVersion(inputVersion);
   const r = parseAstSchemaVersion(requiredVersion);
   const cmp = compareAstSchemaVersions(i, r);
@@ -48,5 +51,3 @@ export function isAstSchemaVersionCompatible(inputVersion: string, requiredVersi
   // compatible if i >= r and major versions match
   return cmp >= 0 && i.major === r.major;
 }
-
-

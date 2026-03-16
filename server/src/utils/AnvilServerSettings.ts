@@ -1,4 +1,3 @@
-
 /**
  * Controls when Anvil syntax concept explanations (drawn from
  * ast-node-info.json) are shown to the user.  Source code, go-to-definition
@@ -20,47 +19,53 @@
  *   - `false`            - Alias for "none".
  */
 export type ShowSyntaxHelp =
-    | boolean
-    | {
-        onHover?: boolean;
-        onAutocomplete?: 'none' | 'anvilKeywords' | 'all' | boolean;
-        includeExamples?: boolean;
+  | boolean
+  | {
+      onHover?: boolean;
+      onAutocomplete?: 'none' | 'anvilKeywords' | 'all' | boolean;
+      includeExamples?: boolean;
     };
 
 /** Fully-resolved, normalised form of ShowSyntaxHelp. */
 export interface ResolvedShowSyntaxHelp {
-    onHover: boolean;
-    onAutocomplete: 'none' | 'anvilKeywords' | 'all';
-    includeExamples: boolean;
+  onHover: boolean;
+  onAutocomplete: 'none' | 'anvilKeywords' | 'all';
+  includeExamples: boolean;
 }
 
 /**
  * Normalise any accepted ShowSyntaxHelp value into the canonical resolved form.
  * Missing fields fall back to the defaults: onHover=true, onAutocomplete="anvilKeywords", includeExamples=false.
  */
-export function resolveShowSyntaxHelp(raw: ShowSyntaxHelp | undefined): ResolvedShowSyntaxHelp {
-    if (raw === undefined || raw === null) {
-        return { onHover: true, onAutocomplete: 'anvilKeywords', includeExamples: false };
-    }
-    if (typeof raw === 'boolean') {
-        return {
-            onHover: raw,
-            onAutocomplete: raw ? 'anvilKeywords' : 'none',
-            includeExamples: false,
-        };
-    }
-    const onAutocomplete = (() => {
-        const v = raw.onAutocomplete;
-        if (v === true)  return 'all'  as const;
-        if (v === false) return 'none' as const;
-        if (v === 'anvilKeywords' || v === 'all' || v === 'none') return v;
-        return 'anvilKeywords' as const;
-    })();
+export function resolveShowSyntaxHelp(
+  raw: ShowSyntaxHelp | undefined,
+): ResolvedShowSyntaxHelp {
+  if (raw === undefined || raw === null) {
     return {
-        onHover: raw.onHover ?? true,
-        onAutocomplete,
-        includeExamples: raw.includeExamples ?? false,
+      onHover: true,
+      onAutocomplete: 'anvilKeywords',
+      includeExamples: false,
     };
+  }
+  if (typeof raw === 'boolean') {
+    return {
+      onHover: raw,
+      onAutocomplete: raw ? 'anvilKeywords' : 'none',
+      includeExamples: false,
+    };
+  }
+  const onAutocomplete = (() => {
+    const v = raw.onAutocomplete;
+    if (v === true) return 'all' as const;
+    if (v === false) return 'none' as const;
+    if (v === 'anvilKeywords' || v === 'all' || v === 'none') return v;
+    return 'anvilKeywords' as const;
+  })();
+  return {
+    onHover: raw.onHover ?? true,
+    onAutocomplete,
+    includeExamples: raw.includeExamples ?? false,
+  };
 }
 
 /**
@@ -82,61 +87,71 @@ export function resolveShowSyntaxHelp(raw: ShowSyntaxHelp | undefined): Resolved
  *   - `false`        - Alias for "none".
  */
 export type ShowTimingInfo =
-    | boolean
-    | {
-        asInlayHints?: boolean | 'none' | 'condensed' | 'full';
-        onHover?: boolean;
-        onAutocomplete?: boolean;
+  | boolean
+  | {
+      asInlayHints?: boolean | 'none' | 'condensed' | 'full';
+      onHover?: boolean;
+      onAutocomplete?: boolean;
     };
 
 /** Fully-resolved, normalised form of TimingInfo. */
 export interface ResolvedShowTimingInfo {
-    asInlayHints: 'none' | 'condensed' | 'full';
-    onHover: boolean;
-    onAutocomplete: boolean;
+  asInlayHints: 'none' | 'condensed' | 'full';
+  onHover: boolean;
+  onAutocomplete: boolean;
 }
 
 /**
  * Normalise any accepted TimingInfo value into the canonical resolved form.
  * Missing fields fall back to the defaults: asInlayHints="condensed", onHover=true, onAutocomplete=true.
  */
-export function resolveTimingInfo(raw: ShowTimingInfo | undefined): ResolvedShowTimingInfo {
-    if (raw === undefined || raw === null) {
-        return { asInlayHints: 'condensed', onHover: true, onAutocomplete: true };
-    }
-    if (typeof raw === 'boolean') {
-        return {
-            asInlayHints: raw ? 'condensed' : 'none',
-            onHover: raw,
-            onAutocomplete: raw,
-        };
-    }
-    const asInlayHints = (() => {
-        const v = raw.asInlayHints;
-        if (v === true)  return 'condensed' as const;
-        if (v === false) return 'none'      as const;
-        if (v === 'none' || v === 'condensed' || v === 'full') return v;
-        return 'condensed' as const;
-    })();
+export function resolveTimingInfo(
+  raw: ShowTimingInfo | undefined,
+): ResolvedShowTimingInfo {
+  if (raw === undefined || raw === null) {
     return {
-        asInlayHints,
-        onHover: raw.onHover ?? true,
-        onAutocomplete: raw.onAutocomplete ?? true,
+      asInlayHints: 'condensed',
+      onHover: true,
+      onAutocomplete: true,
     };
+  }
+  if (typeof raw === 'boolean') {
+    return {
+      asInlayHints: raw ? 'condensed' : 'none',
+      onHover: raw,
+      onAutocomplete: raw,
+    };
+  }
+  const asInlayHints = (() => {
+    const v = raw.asInlayHints;
+    if (v === true) return 'condensed' as const;
+    if (v === false) return 'none' as const;
+    if (v === 'none' || v === 'condensed' || v === 'full') return v;
+    return 'condensed' as const;
+  })();
+  return {
+    asInlayHints,
+    onHover: raw.onHover ?? true,
+    onAutocomplete: raw.onAutocomplete ?? true,
+  };
 }
 
 export interface AnvilServerSettings {
-    maxNumberOfProblems?: number;
-    projectRoot?: string;
-    executablePath?: string;
-    snippets?: { fancy?: boolean; };
-    showTimingInfo?: ShowTimingInfo;
-    showSyntaxHelp?: ShowSyntaxHelp;
-    debug?: boolean;
+  maxNumberOfProblems?: number;
+  projectRoot?: string;
+  executablePath?: string;
+  snippets?: { fancy?: boolean };
+  showTimingInfo?: ShowTimingInfo;
+  showSyntaxHelp?: ShowSyntaxHelp;
+  debug?: boolean;
 }
 
 export const DEFAULT_ANVIL_SERVER_SETTINGS: AnvilServerSettings = {
-    maxNumberOfProblems: 1000,
-    showTimingInfo: { asInlayHints: 'condensed', onHover: true, onAutocomplete: true },
-    showSyntaxHelp: { onHover: true, onAutocomplete: 'anvilKeywords' },
+  maxNumberOfProblems: 1000,
+  showTimingInfo: {
+    asInlayHints: 'condensed',
+    onHover: true,
+    onAutocomplete: true,
+  },
+  showSyntaxHelp: { onHover: true, onAutocomplete: 'anvilKeywords' },
 };
