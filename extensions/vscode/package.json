@@ -51,11 +51,52 @@
           "default": "",
           "description": "Path to the Anvil compiler binary. Defaults to 'anvil' in your PATH."
         },
-        "anvil.inlayHints.timingInfo": {
+        "anvil.showTimingInfo": {
           "scope": "window",
-          "type": "boolean",
-          "default": true,
-          "description": "Controls whether inlay hints denoting event timings are shown in the editor."
+          "default": { "asInlayHints": "condensed", "onHover": true },
+          "description": "Controls how clock-cycle timing and expression lifetime information is shown in the editor.",
+          "oneOf": [
+            {
+              "type": "boolean",
+              "description": "`true` enables timing info as condensed inlay hints and on hover. `false` disables all timing info."
+            },
+            {
+              "type": "object",
+              "description": "Fine-grained control over where clock-cycle timing and lifetime information appears.",
+              "properties": {
+                "asInlayHints": {
+                  "default": "condensed",
+                  "description": "Show clock-cycle timings and expression lifetimes as inline annotations in the editor gutter.",
+                  "oneOf": [
+                    {
+                      "type": "string",
+                      "enum": ["none", "condensed", "full"],
+                      "enumDescriptions": [
+                        "Do not show timing info as inlay hints.",
+                        "Show timing info as compact prefixed and postfixed inlay hints.",
+                        "Show timing info in full phrases as prefixed and postfixed inlay hints."
+                      ]
+                    },
+                    {
+                      "type": "boolean",
+                      "description": "`true` is equivalent to `\"condensed\"`. `false` is equivalent to `\"none\"`."
+                    }
+                  ]
+                },
+                "onHover": {
+                  "type": "boolean",
+                  "default": true,
+                  "description": "Show clock-cycle timing and lifetime information when hovering over an expression."
+                },
+                "onAutocomplete": {
+                  "type": "boolean",
+                  "default": false,
+                  "description": "Show clock-cycle timing and lifetime information in autocomplete documentation popups."
+                }
+              },
+              "additionalProperties": false
+            }
+          ]
         },
         "anvil.showSyntaxHelp": {
           "scope": "window",

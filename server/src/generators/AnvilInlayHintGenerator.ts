@@ -1,5 +1,5 @@
 import { InlayHint, InlayHintKind } from "vscode-languageserver";
-import { AnvilServerSettings } from "../utils/AnvilServerSettings";
+import { AnvilServerSettings, resolveTimingInfo } from "../utils/AnvilServerSettings";
 import { AnvilLspUtils } from "../utils/AnvilLspUtils";
 import { inlayHintLogger } from "../utils/logger";
 import { AnvilDocument } from "../core/AnvilDocument";
@@ -14,8 +14,9 @@ export class AnvilInlayHintGenerator {
   public static generateInlayHints(anvilDocument: AnvilDocument, settings: AnvilServerSettings): InlayHint[] {
     const hints: InlayHint[] = [];
 
-	if (settings.inlayHints?.timingInfo) {
-		hints.push(...this.computeLifetimeInlayHints(anvilDocument, settings));
+	const timingHints = resolveTimingInfo(settings.showTimingInfo);
+	if (timingHints.asInlayHints !== "none") {
+		hints.push(...this.computeLifetimeInlayHints(anvilDocument, { mode: timingHints.asInlayHints, debug: settings.debug }));
 	}
 
     return hints;
@@ -24,11 +25,13 @@ export class AnvilInlayHintGenerator {
   /**
    * Computes inlay hints related to event cycles and lifetimes in the Anvil document, and returns them as InlayHint objects.
    */
-  private static computeLifetimeInlayHints(anvilDocument: AnvilDocument, settings: AnvilServerSettings): InlayHint[] {
+  private static computeLifetimeInlayHints(anvilDocument: AnvilDocument, options: { mode: 'condensed' | 'full', debug?: boolean }): InlayHint[] {
     if (!anvilDocument.anvilAst) {
 		inlayHintLogger.info(`No inlay hint info available for document ${anvilDocument.filepath}`);
 		return [];
 	}
+
+	const ascii = false;
 
 	const lineCount = anvilDocument.textDocument.lineCount;
 
@@ -45,7 +48,7 @@ export class AnvilInlayHintGenerator {
 		const tid = e.tid;
 		const delays = e.delays;
 
-		const debugEid = settings.debug ? ` (e${eid})` : '';
+		const debugEid = options.debug ? ` (e${eid})` : '';
 		const delayStr = delays ? `t${tid} c` + delays.map(d => '' + d).join('/') + debugEid : '';
 
 		return delayStr || `t${tid} c?${debugEid}`;
@@ -76,7 +79,10 @@ export class AnvilInlayHintGenerator {
 		}
 
         // postfix: indicate sustained till event info, if applicable
-		postfixInject[lspEndLine] = susTillEv ? ` ... sustained till ${susTillEv} ends` : '';
+		const sustainSymbol = ascii ? '~>' : '⚡→';
+		postfixInject[lspEndLine] = susTillEv ?
+			(options.mode === "full" ? ` ... sustained till ${susTillEv} ends` : `  ${sustainSymbol} ${susTillEv}`) :
+			'';
 
         // track max length for alignment purposes later
         maxTextLen = Math.max(maxTextLen, event.length);
@@ -103,8 +109,6 @@ export class AnvilInlayHintGenerator {
 	}
 
 	// merge all prefix lines with the same event cycle into a single block with markers to indicate continuation
-	const ascii = false;
-
 	const loneMarker  = (ascii ? ' - ' : ' ─ ');
 	const startMarker = (ascii ? ',- ' : ' ┌ ');
 	const contMarker  = (ascii ? '|  ' : ' │ ');
@@ -116,7 +120,7 @@ export class AnvilInlayHintGenerator {
 	let lastText = '';
 	for (let i = 0; i < inlineRanges.length; i++) {
 		let currText = inlineRanges[i][1].trim();
-		if (settings.debug) {
+		if (options.debug) {
 			currText = currText.replace(/\(e\d+\)/g, '(eX)');
 		}
 
@@ -169,7 +173,7 @@ export class AnvilInlayHintGenerator {
 			}
 		}
 
-		const prefix = settings.debug || !before_eq_curr ? inlineRanges[i][1] : ' '.repeat(maxTextLen - markerLen);
+		const prefix = options.debug || !before_eq_curr ? inlineRanges[i][1] : ' '.repeat(maxTextLen - markerLen);
 
 		if (!before_eq_curr && curr_eq_after) {
 			// start of a new sequence of repeats, mark with startMarker

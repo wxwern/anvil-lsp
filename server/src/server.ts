@@ -19,7 +19,7 @@ import { TextDocument } from 'vscode-languageserver-textdocument';
 import { TextDocumentConnection } from 'vscode-languageserver/lib/common/textDocuments';
 
 import { AnvilLspUtils } from './utils/AnvilLspUtils';
-import { AnvilServerSettings, DEFAULT_ANVIL_SERVER_SETTINGS, resolveShowSyntaxHelp } from './utils/AnvilServerSettings';
+import { AnvilServerSettings, DEFAULT_ANVIL_SERVER_SETTINGS, resolveShowSyntaxHelp, resolveTimingInfo } from './utils/AnvilServerSettings';
 import { AnvilDocument } from './core/AnvilDocument';
 import { LazyMap } from './utils/LazyMap';
 import { AnvilDescriptionGenerator } from './generators/AnvilDescriptionGenerator';
@@ -294,6 +294,7 @@ connection.onHover(async (params) => {
 	const settings = await documentSettings.get(document.uri);
 	const D = !!settings.debug;
 	const showSyntaxHelp = resolveShowSyntaxHelp(settings.showSyntaxHelp);
+	const showTimingInfo = resolveTimingInfo(settings.showTimingInfo);
 
 	const anvilDocument = documentAnvilManagers.get(document.uri);
 	if (!anvilDocument) return !D ? null : {
@@ -336,7 +337,7 @@ connection.onHover(async (params) => {
 				code: true,
 				documentation: true,
 				definitions: true,
-				lifetime: true,
+				lifetime: showTimingInfo.onHover,
 				explanations: showSyntaxHelp.onHover,
 				examples: showSyntaxHelp.includeExamples,
 				debug: D,
@@ -540,6 +541,7 @@ connection.onCompletionResolve(async (item: CompletionItem) => {
 	// (CompletionResolve has no document URI, so we use the most-recently-resolved settings.)
 	const resolvedSettings = globalSettings;
 	const showSyntaxHelp = resolveShowSyntaxHelp(resolvedSettings.showSyntaxHelp);
+	const showTimingInfo = resolveTimingInfo(resolvedSettings.showTimingInfo);
 
 	// Whether to include the explanation (desc / explanations segment) for this item.
 	const includeExplanation = (() => {
@@ -569,7 +571,7 @@ connection.onCompletionResolve(async (item: CompletionItem) => {
 					code: true,
 					documentation: true,
 					definitions: true,
-					lifetime: true,
+					lifetime: showTimingInfo.onAutocomplete,
 					explanations: includeExplanation,
 					examples: showSyntaxHelp.includeExamples,
 				}) || '';
