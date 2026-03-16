@@ -441,14 +441,20 @@ connection.onTypeDefinition(async (params) => {
 		return n?.satisfiesKind('type_def') || n?.satisfiesKind('type_element_def');
 	});
 
-	if (typeDefs.length === 0) {
+	const updatedDefs = typeDefs.filter(def =>
+		!!(ast.node(def)?.names.includes(identifierUnderCursor ?? ''))
+	);
+
+	const defs = updatedDefs.length > 0 ? updatedDefs : allDefs;
+
+	if (defs.length === 0) {
 		serverLogger.info(`No type definitions found for node at position`);
 		return null;
 	}
 
-	serverLogger.info(`Found ${typeDefs.length} type definition(s) for node at position`);
+	serverLogger.info(`Found ${defs.length} type definition(s) for node at position`);
 
-	return typeDefs.map(def => {
+	return defs.map(def => {
 		return {
 			uri: "file://" + def.fullpath,
 			range:
