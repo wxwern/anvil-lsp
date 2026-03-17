@@ -202,9 +202,9 @@ export class AnvilDescriptionGenerator {
           '- Must be sustained ' +
           (offset
             ? offset > 0
-              ? `till \`${offset}\` cycle(s) after \`${lifetime.ending.value}\` begins to be exchanged`
-              : `till \`${-offset}\` cycle(s) before \`${lifetime.ending.value}\` is exchanged`
-            : `till before \`${lifetime.ending.value}\` is exchanged`);
+              ? `till \`${offset}\` cycle(s) after \`${lifetime.ending.value}\` begins to be exchanged\n`
+              : `till \`${-offset}\` cycle(s) before \`${lifetime.ending.value}\` is exchanged\n`
+            : `till before \`${lifetime.ending.value}\` is exchanged\n`);
         break;
       }
       case 'eternal':
@@ -215,12 +215,16 @@ export class AnvilDescriptionGenerator {
     }
 
     // Contextual mode: omit the endpoint side label (caller already knows which side they're on)
-    if (context === 'send')
-      return `- May send ${this.formatSyncMode(msg.send_sync)}\n` + lifetimeStr;
-    if (context === 'recv')
-      return (
-        `- May receive ${this.formatSyncMode(msg.recv_sync)}\n` + lifetimeStr
-      );
+    if (context === 'send') {
+      lifetimeStr =
+        `- May send ${this.formatSyncMode(msg.send_sync)}\n` + lifetimeStr;
+      return lifetimeStr;
+    }
+    if (context === 'recv') {
+      lifetimeStr =
+        `- May receive ${this.formatSyncMode(msg.recv_sync)}\n` + lifetimeStr;
+      return lifetimeStr;
+    }
 
     // dir is from the left endpoint's perspective:
     //   "out" -> left sends,  right receives
@@ -230,12 +234,12 @@ export class AnvilDescriptionGenerator {
     const receiverSide = leftSends ? '`right`' : '`left`';
 
     // Full mode: include endpoint side labels
-    const sendLine = `- ${senderSide} endpoint sends ${this.formatSyncMode(msg.send_sync)}`;
-    const recvLine = `- ${receiverSide} endpoint receives ${this.formatSyncMode(msg.recv_sync)}`;
+    const sendLine = `- ${senderSide} endpoint sends ${this.formatSyncMode(msg.send_sync)}\n`;
+    const recvLine = `- ${receiverSide} endpoint receives ${this.formatSyncMode(msg.recv_sync)}\n`;
     if (leftSends) {
-      return sendLine + '\n' + recvLine + '\n' + lifetimeStr;
+      return sendLine + recvLine + lifetimeStr;
     } else {
-      return recvLine + '\n' + sendLine + '\n' + lifetimeStr;
+      return recvLine + sendLine + lifetimeStr;
     }
   }
 
