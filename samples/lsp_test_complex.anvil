@@ -178,16 +178,6 @@ proc Monitor<T : type> (src_ep : left Bus_ch<T>, fwd_ep : right Bus_ch<T>) {
 // [GD] Jump to BusWorker, Monitor, Logger, Bus_ch, Logger_ch definitions
 // [FR] "Bus_ch" referenced at two chan declarations + two proc defs
 // [IH] Rich inlay-hint output once timing info is enabled
-//
-// Suggested interactive edits in the empty loop:
-//   A. [AC][SN] "spawn BusWorker<logic[8]>(" → two-endpoint snippet
-//   B. [SH]     Comma between endpoints advances active param
-//   C. [AC][SN] "spawn Monitor<logic[8]>(" → two-endpoint snippet
-//   D. [AC]     "send proxy_ri." → completions list read_req / write_req
-//   E. [SH]     "send proxy_ri.read_req(" → single-param address hint
-//   F. [SH]     "send proxy_ri.write_req(" → single-param data hint
-//   G. [AC]     "call clamp8(" → function completions and snippet
-//   H. [SH]     Three-parameter signature help with comma navigation
 // ---------------------------------------------------------------------------
 
 proc pipe_top () {
@@ -202,8 +192,7 @@ proc pipe_top () {
 
     // Spawn BusWorker with two endpoint arguments.
     // [SN] Delete and retype "spawn BusW" to trigger the two-endpoint snippet
-    // [SH] After "spawn BusWorker<logic[8]>(", hint shows bus_ep and log_ep;
-    //      comma moves to the log_ep parameter
+    // [SH] After "spawn BusWorker<logic[8]>(", hint shows bus_ep and log_ep
     spawn BusWorker<logic[8]>(worker_le, log_ri);
 
     // Spawn Logger to consume log entries from BusWorker.
@@ -219,15 +208,14 @@ proc pipe_top () {
     // Interactive loop — EDIT HERE for complex-example LSP testing
     //
     // Suggested edits:
-    //   1. [AC]     "send proxy_ri." → completions list read_req / write_req
-    //   2. [SH]     "send proxy_ri.read_req(" → address hint
-    //   3. [SH]     "send proxy_ri.write_req(" → data hint
-    //   4. [AC]     "call clamp8(" → 3-arg function hint
-    //   5. [SH]     Three-parameter signature help with comma navigation
-    //   6. [AC]     "call is_aligned(" → 2-arg function hint
-    //   7. [H]      Hover over any identifier for hover info
-    //   8. [GD]     Go to definition of any identifier
-    //   9. [FR]     Find all references of "Bus_ch"
+    //   1. [AC]         "send proxy_ri." → completions list read_req / write_req
+    //   2. [SH]         "send proxy_ri.read_req(" → address hint
+    //   3. [SH]         "send proxy_ri.write_req(" → data hint
+    //   4. [AC][SN][SH] "call clamp8(" → 3-arg function snippet and hint
+    //   5. [AC][SN][SH] "call is_aligned(" → 2-arg function snippet hint
+    //   6. [H]          Hover over any identifier for hover info
+    //   7. [GD]         Go to definition of any identifier
+    //   8. [FR]         Find all references of "Bus_ch"
     // -------------------------------------------------------------------------
 
     loop {

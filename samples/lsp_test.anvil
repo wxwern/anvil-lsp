@@ -120,9 +120,9 @@ proc top () {
     chan le -- ri : Calc_ch;
 
     // Spawn
-    // [H]  Hover "Worker" to see proc definition
-    // [SN] Delete "Worker(le)" and re-type "spawn W" to trigger snippet
-    // [SH] After "spawn Worker(", signature help shows endpoint params
+    // [H]      Hover "Worker" to see proc definition
+    // [SN][AC] Delete and re-type "spawn W" to trigger completions/snippet
+    // [SH]     After "spawn Worker(", signature help shows endpoint params
     spawn Worker(le);
 
     // Registers
@@ -139,20 +139,18 @@ proc top () {
     // Suggested edits to try:
     //   1. [AC][SN] Type "call " and trigger completion → pick add8 or sub8
     //   2. [SH]     After "call add8(", type an arg → see signature hint for (a, b)
-    //   3. [AC][SN] Type "spawn " → pick Worker, get snippet
-    //   4. [SH]     After "spawn Worker(", see endpoint hint
-    //   5. [AC]     After "send ri.", trigger completion → lists req / resp messages
-    //   6. [SH]     After "send ri.req(", see Packet signature hint
-    //   7. [AC][SN] Type "Packet::" → get record-init snippet
-    //   8. [SH]     After "Packet::{", see field signature hint (op; lhs; rhs)
-    //   9. [AC]     After "Op::", get enum-variant completions (Add, Sub, Nop)
-    //  10. [AC]     After "*", get register-read completions (req_count, last_result)
-    //  11. [AC]     After "set ", get register-write completions
-    //  12. [H]      Hover over any identifier for hover info
-    //  13. [GD]     Go to definition of any identifier
-    //  14. [FR]     Find all references of "req_count"
-    //  15. [IH]     Enable inlayHints.timingInfo in settings to see clock annotations
-    //  16. [D]      Introduce an error (e.g. type/lifetime issues) to test diagnostics
+    //   3. [AC]     After "send ri.", trigger completion → lists req / resp messages
+    //   4. [SH]     After "send ri.req(", see Packet signature hint
+    //   5. [AC][SN] Type "Packet::" → get record-init snippet
+    //   6. [SH]     After "Packet::{", see field signature hint (op; lhs; rhs)
+    //   7. [AC]     After "Op::", get enum-variant completions (Add, Sub, Nop)
+    //   8. [AC]     After "*", get register-read completions (req_count, last_result)
+    //   9. [AC]     After "set ", get register-write completions
+    //  10. [H]      Hover over any identifier for hover info
+    //  11. [GD]     Go to definition of any identifier
+    //  12. [FR]     Find all references of "req_count"
+    //  13. [IH]     Enable inlayHints.timingInfo in settings to see clock annotations
+    //  14. [D]      Introduce an error (e.g. type/lifetime issues) to test diagnostics
     // ---------------------------------------------------------------------------
 
     loop {

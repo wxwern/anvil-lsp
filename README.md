@@ -13,6 +13,7 @@ To install the language server, view the [installation instructions](#language-s
 
 To install a supported version of Anvil, view the [Anvil installation instructions](#anvil-installation).
 
+---
 
 ## Feature Support
 
@@ -47,6 +48,7 @@ For details, see the [LSP feature support documentation](LSP.md).
 **Warning:** Both the Anvil Compiler AST output and Language Server implementations are currently experimental.
 They may have bugs and the AST API are subject to breaking changes. Use with caution.
 
+---
 
 ## Language Server Installation
 
@@ -116,6 +118,7 @@ If you prefer to manage it manually (still requires `coc.nvim`):
 
 </details>
 
+---
 
 ## Anvil Installation
 
@@ -134,8 +137,9 @@ This repository includes a submodule of Anvil, pinned to a version with guarante
     eval $(opam env) && dune build --release && dune install
     ```
 
+---
 
-### Development Workflows
+## Development Workflows
 
 On *nix systems, run the dev scripts in the root of the repository to format/build/test all components
 (language server, anvil compiler, all editor extensions):
