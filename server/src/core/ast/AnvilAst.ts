@@ -73,12 +73,14 @@ export type AnvilAstNodeAbsolutePath = AnvilAstNodePath & {
 
 /**
  * AnvilEventInfo represents the unique identifier of an event in Anvil,
- * consisting of its thread ID (tid), event ID (eid), and optional possible delays since start.
+ * consisting of its thread ID (tid), event ID (eid),
+ * optional possible delays since start, and optional possible delay until next event.
  */
 export type AnvilEventInfo = {
   tid: number;
   eid: number;
-  delays?: number[];
+  prevDelays?: number[];
+  nextDelay?: number;
 };
 
 /**
@@ -566,7 +568,7 @@ export class AnvilAstNode<T = any, U extends AnvilAstNode | unknown = unknown> {
    * Convenience Accessors
    * ------------------------- */
 
-  private get_event_delays(tid: number, eid: number): number[] | null {
+  private get_event_prior_delays(tid: number, eid: number): number[] | null {
     const eventGraphLookup = this.root._eventIdCycleDelayLookup;
     if (!eventGraphLookup) {
       return null;
@@ -602,16 +604,20 @@ export class AnvilAstNode<T = any, U extends AnvilAstNode | unknown = unknown> {
   get event(): AnvilEventInfo | null {
     const tid = this.unsafeTraverse('event', 'tid').resolveAs(z.number());
     const eid = this.unsafeTraverse('event', 'eid').resolveAs(z.number());
+    const nextDelay = this.unsafeTraverse('event', 'cycles').resolveAs(
+      z.number(),
+    );
 
     if (tid === null || eid === null) {
       return null;
     }
 
-    const delays = this.get_event_delays(tid, eid);
+    const delays = this.get_event_prior_delays(tid, eid);
     return {
       tid,
       eid,
-      delays: delays ?? undefined,
+      prevDelays: delays ?? undefined,
+      nextDelay: nextDelay ?? undefined,
     };
   }
 
@@ -622,16 +628,20 @@ export class AnvilAstNode<T = any, U extends AnvilAstNode | unknown = unknown> {
   get sustainedTillEvent(): AnvilEventInfo | null {
     const tid = this.unsafeTraverse('event', 'tid').resolveAs(z.number());
     const toEid = this.unsafeTraverse('event', 'to_eid').resolveAs(z.number());
+    const nextDelay = this.unsafeTraverse('event', 'cycles').resolveAs(
+      z.number(),
+    );
 
     if (tid === null || toEid === null) {
       return null;
     }
 
-    const delays = this.get_event_delays(tid, toEid);
+    const delays = this.get_event_prior_delays(tid, toEid);
     return {
       tid,
       eid: toEid,
-      delays: delays ?? undefined,
+      prevDelays: delays ?? undefined,
+      nextDelay: nextDelay ?? undefined,
     };
   }
 

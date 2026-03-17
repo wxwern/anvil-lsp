@@ -63,44 +63,59 @@ export class AnvilInlayHintGenerator {
       anvilDocument.filepath,
     );
 
+    const threadInject: { [lineno: number]: string } = [];
     const prefixInject: { [lineno: number]: string } = [];
-    const postfixInject: { [lineno: number]: string } = [];
-    let maxTextLen = 0;
+    const postfixInject: { [lineno: number]: { [colno: number]: string } } = [];
+    let maxPrefixTextLen = 0;
+
+    const loneMarker = ascii ? ' - ' : ' ─ ';
+    const startMarker = ascii ? ',- ' : ' ┌ ';
+    const contMarker = ascii ? '|  ' : ' │ ';
+    const endMarker = ascii ? "'- " : ' └ ';
     const markerLen = 3;
+
+    // iterate through all locatable nodes, and find and record their event information.
     const formatEvent = (e: AnvilEventInfo | null) => {
       if (e === null) return null;
 
       const eid = e.eid;
-      const tid = e.tid;
-      const delays = e.delays;
+      const delays = e.prevDelays;
 
       const debugEid = options.debug ? ` (e${eid})` : '';
+      const cyclePrefix = options.mode === 'full' ? 'cycle ' : 'c';
       const delayStr = delays
-        ? `t${tid} c` + delays.map((d) => '' + d).join('/') + debugEid
+        ? cyclePrefix + delays.map((d) => '' + d).join('/') + debugEid
         : '';
 
-      return delayStr || `t${tid} c?${debugEid}`;
+      return delayStr || `${cyclePrefix}?${debugEid}`;
     };
 
-    // iterate through all locatable nodes, and find and record their event information.
     for (const loc of locs) {
       const node = anvilDocument.anvilAst?.node(loc);
       if (!node) continue;
       const event = formatEvent(node.event);
       const susTillEv = formatEvent(node.sustainedTillEvent);
+      const nextDelay = node.event?.nextDelay ?? 0;
+
       if (!event) continue;
 
-      const lspStartLine =
-        anvilDocument.getLspPosOfAnvilPos({
-          line: loc.span.start.line,
-          col: 0,
-        })?.line ?? AnvilLspUtils.anvilPosToLspPos(loc.span.start).line;
+      const lspStart = anvilDocument.getLspPosOfAnvilPos({
+        line: loc.span.start.line,
+        col: 0,
+      });
 
-      const lspEndLine =
-        anvilDocument.getLspPosOfAnvilPos({
-          line: loc.span.end.line,
-          col: 0,
-        })?.line ?? AnvilLspUtils.anvilPosToLspPos(loc.span.end).line;
+      const lspEnd = anvilDocument.getLspPosOfAnvilPos({
+        line: loc.span.end.line,
+        col: loc.span.end.col,
+      });
+
+      const lspStartLine = lspStart?.line;
+      const lspEndLine = lspEnd?.line;
+      const lspEndCol = lspEnd?.character;
+
+      if (lspStartLine === undefined || lspEndLine === undefined) {
+        continue;
+      }
 
       // prefix: indicate event cycle info
       for (let l = lspStartLine; l <= lspEndLine; l++) {
@@ -110,124 +125,181 @@ export class AnvilInlayHintGenerator {
         prefixInject[l] = event;
       }
 
+      postfixInject[lspEndLine] = postfixInject[lspEndLine] || {};
+      let postfixText = '';
+
+      // postfix: indicate if this results in a forced delay
+      if (nextDelay > 0) {
+        const waitLabel = ascii || options.mode === 'full' ? '+' : '⧖';
+        const cycleUnit = options.mode === 'condensed' ? 'c' : ' cycle(s)';
+        const waitDesc = ` ${waitLabel} ${nextDelay ?? 0}${cycleUnit}`;
+        postfixText += waitDesc;
+      }
+
       // postfix: indicate sustained till event info, if applicable
-      const sustainSymbol = ascii ? '~>' : '⚡→';
-      postfixInject[lspEndLine] = susTillEv
+      const sustainSymbol = ascii ? '~>' : '↘';
+      postfixText += susTillEv
         ? options.mode === 'full'
-          ? ` ... sustained till ${susTillEv} ends`
-          : `  ${sustainSymbol} ${susTillEv}`
+          ? ` sustained till ${susTillEv} ends`
+          : ` ${sustainSymbol} ${susTillEv}`
         : '';
 
+      if (postfixText && lspEndCol !== undefined) {
+        postfixInject[lspEndLine][lspEndCol] =
+          options.mode === 'full'
+            ? ` /* ${postfixText.trim()} */`
+            : ` ${postfixText.trim()}`;
+      }
+
       // track max length for alignment purposes later
-      maxTextLen = Math.max(maxTextLen, event.length);
+      maxPrefixTextLen = Math.max(maxPrefixTextLen, event.length);
     }
 
-    maxTextLen = Math.max(
+    // expand max length for adding markers later to cycle indicators
+    maxPrefixTextLen = Math.max(
       8,
-      Math.pow(2, Math.ceil(Math.log2(maxTextLen + markerLen))),
+      Math.ceil((maxPrefixTextLen + markerLen) / 4) * 4,
     );
 
+    // iterate through all threads, and find and record their thread ids
+    for (const t of anvilDocument.anvilAst
+      .resolveRoot(anvilDocument.filepath)
+      ?.event_graphs?.flatMap((g) => g.threads) ?? []) {
+      const tid = t.tid;
+      const span = t.span;
+
+      const lspStartLine =
+        (anvilDocument.getLspPosOfAnvilPos({
+          line: span.start.line,
+          col: 0,
+        })?.line ?? AnvilLspUtils.anvilPosToLspPos(span.start).line) - 1;
+
+      const text =
+        options.mode === 'full' ? `___ thread ${tid} ___` : `__t${tid}__`;
+      threadInject[lspStartLine] = text;
+      maxPrefixTextLen = Math.max(maxPrefixTextLen, text.length);
+    }
+
+    // Log checkpoint.
     inlayHintLogger.info(
       `Found lifetime inlay hints (${Object.keys(prefixInject).length} (prefix) + ${Object.keys(postfixInject).length} (postfix)) for document ${anvilDocument.filepath}`,
     );
 
-    // pad the prefix event information to be identical length for all lines.
-    const inlineRanges: [number, string][] = [];
+    // pad the prefix event information to be identical length for all lines
+    const prefixPaddedInject: [number, string][] = [];
     for (let line = 0; line < lineCount; line++) {
-      if (prefixInject[line]) {
-        const text = prefixInject[line];
-        if (text.length < maxTextLen) {
-          // pad with spaces to ensure inlay hints are aligned
-          inlineRanges.push([
-            line,
-            ' '.repeat(maxTextLen - text.length - markerLen) + text,
-          ]);
-        } else {
-          inlineRanges.push([line, text]);
-        }
+      const threadText = threadInject[line];
+      const cycleText = prefixInject[line];
+
+      // pad with spaces to ensure inlay hints are right-aligned and code is left aligned
+      if (threadText) {
+        prefixPaddedInject.push([
+          line,
+          ' '.repeat(maxPrefixTextLen - threadText.length) + threadText,
+        ]);
+      } else if (cycleText) {
+        prefixPaddedInject.push([
+          line,
+          ' '.repeat(maxPrefixTextLen - cycleText.length - markerLen) +
+            cycleText,
+        ]);
       } else {
-        inlineRanges.push([line, ' '.repeat(maxTextLen - markerLen)]);
+        prefixPaddedInject.push([
+          line,
+          ' '.repeat(maxPrefixTextLen - markerLen),
+        ]);
       }
     }
 
     // merge all prefix lines with the same event cycle into a single block with markers to indicate continuation
-    const loneMarker = ascii ? ' - ' : ' ─ ';
-    const startMarker = ascii ? ',- ' : ' ┌ ';
-    const contMarker = ascii ? '|  ' : ' │ ';
-    const endMarker = ascii ? "'- " : ' └ ';
-
     const repeats_above: { [i: number]: boolean } = {};
 
     // - first pass: determine which lines have the same event cycle as the line above, and record in repeats_above
     let lastText = '';
-    for (let i = 0; i < inlineRanges.length; i++) {
-      let currText = inlineRanges[i][1].trim();
+    for (let i = 0; i < prefixPaddedInject.length; i++) {
+      let currText = prefixPaddedInject[i][1].trim();
       if (options.debug) {
         currText = currText.replace(/\(e\d+\)/g, '(eX)');
       }
 
-      repeats_above[i] = currText === lastText;
-      if (currText) {
-        lastText = currText;
+      // the text in THIS iteration repeats the above one if it is:
+      // - identical to the previous non-empty text, and
+      // - it is not currently switching to a new thread
+      repeats_above[i] = currText === lastText && !threadInject[i];
+
+      // the text in the NEXT iteration will see this text as the previous one if
+      // - it is not empty, or
+      // - it is a new thread marker
+      if (currText || threadInject[i]) {
+        lastText = threadInject[i] || currText;
       }
     }
 
     // - second pass: use the information in repeats_above to determine which marker to append to each line,
     //                and replace the text with spaces if it's a repeat of the line above
-    for (let i = 0; i < inlineRanges.length; i++) {
-      const currText = inlineRanges[i][1].trim();
-      if (!currText) {
-        inlineRanges[i][1] = ' '.repeat(maxTextLen);
+    for (let i = 0; i < prefixPaddedInject.length; i++) {
+      if (threadInject[i]) {
+        // marker space already reserved for thread header
         continue;
       }
 
-      const before_is_blank = inlineRanges[i - 1]?.[1].trim() === '';
+      const currText = prefixPaddedInject[i][1].trim();
+      if (!currText) {
+        prefixPaddedInject[i][1] = ' '.repeat(maxPrefixTextLen);
+        continue;
+      }
+
+      const before_is_blank = prefixPaddedInject[i - 1]?.[1].trim() === '';
 
       const before_eq_curr = repeats_above[i];
       const curr_eq_after = repeats_above[i + 1];
 
       if (before_is_blank && before_eq_curr) {
+        // the previous text is blank, but we found that the current line repeats the previous non-blank line
         // search upwards till we find a non-blank line
         let j = i - 1;
-        while (j >= 0 && inlineRanges[j][1].trim() === '') {
+        while (j >= 0 && prefixPaddedInject[j][1].trim() === '') {
           j--;
         }
         if (j >= 0) {
-          const wasLone = inlineRanges[j][1].endsWith(loneMarker);
-          const wasEnd = inlineRanges[j][1].endsWith(endMarker);
+          const wasLone = prefixPaddedInject[j][1].endsWith(loneMarker);
+          const wasEnd = prefixPaddedInject[j][1].endsWith(endMarker);
           if (wasLone) {
-            inlineRanges[j][1] =
-              inlineRanges[j][1].slice(0, -loneMarker.length) + startMarker;
+            prefixPaddedInject[j][1] =
+              prefixPaddedInject[j][1].slice(0, -loneMarker.length) +
+              startMarker;
           } else if (wasEnd) {
-            inlineRanges[j][1] =
-              inlineRanges[j][1].slice(0, -endMarker.length) + contMarker;
+            prefixPaddedInject[j][1] =
+              prefixPaddedInject[j][1].slice(0, -endMarker.length) + contMarker;
           }
         }
-        // replace forwards with contMarker
+
+        // replace all blank lines from that point on with a contMarker to connect the indicators
         j += 1;
         while (j < i) {
-          inlineRanges[j][1] = ' '.repeat(maxTextLen - markerLen) + contMarker;
+          prefixPaddedInject[j][1] =
+            ' '.repeat(maxPrefixTextLen - markerLen) + contMarker;
           j++;
         }
       }
 
       const prefix =
         options.debug || !before_eq_curr
-          ? inlineRanges[i][1]
-          : ' '.repeat(maxTextLen - markerLen);
+          ? prefixPaddedInject[i][1]
+          : ' '.repeat(maxPrefixTextLen - markerLen);
 
       if (!before_eq_curr && curr_eq_after) {
         // start of a new sequence of repeats, mark with startMarker
-        inlineRanges[i][1] = prefix + startMarker;
+        prefixPaddedInject[i][1] = prefix + startMarker;
       } else if (before_eq_curr && !curr_eq_after) {
         // end of a sequence of repeats, mark with endMarker
-        inlineRanges[i][1] = prefix + endMarker;
+        prefixPaddedInject[i][1] = prefix + endMarker;
       } else if (before_eq_curr && curr_eq_after) {
         // middle of a sequence of repeats, mark with contMarker
-        inlineRanges[i][1] = prefix + contMarker;
+        prefixPaddedInject[i][1] = prefix + contMarker;
       } else if (!before_eq_curr && !curr_eq_after) {
         // lone line, mark with loneMarker
-        inlineRanges[i][1] = prefix + loneMarker;
+        prefixPaddedInject[i][1] = prefix + loneMarker;
       }
 
       // should not reach here
@@ -235,35 +307,24 @@ export class AnvilInlayHintGenerator {
 
     // prepare the final merged list of inlay hints and output them.
     const mergedRanges: [line: number, col: number, text: string][] = [
-      ...inlineRanges.map(
-        ([line, text]) => [line, 0, text] as [number, number, string],
+      ...prefixPaddedInject.map(
+        ([line, text]) => [line, 0, text] satisfies [number, number, string],
       ),
 
-      ...Object.entries(postfixInject).map(
-        ([line, text]) => [+line, Infinity, text] as [number, number, string],
+      ...Object.entries(postfixInject).flatMap(([line, colText]) =>
+        Object.entries(colText).map(
+          ([col, text]) =>
+            [+line, +col, text] satisfies [number, number, string],
+        ),
       ),
     ];
 
-    const calcPostfixPosition = (line: number) => {
-      const lineText = anvilDocument.textDocument.getText({
-        start: { line, character: 0 },
-        end: { line, character: Number.MAX_SAFE_INTEGER },
-      });
-      return lineText.length;
-    };
-
     return mergedRanges.map(([line, col, text]) => {
-      const pos = {
-        line: line,
-        character: col,
-      };
-
-      if (!Number.isFinite(pos?.character ?? 0)) {
-        pos!.character = calcPostfixPosition(pos!.line);
-      }
-
       return {
-        position: pos,
+        position: {
+          line: line,
+          character: col,
+        },
         label: text,
         kind: InlayHintKind.Type,
       };

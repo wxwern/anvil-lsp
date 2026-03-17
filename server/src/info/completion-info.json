@@ -232,14 +232,14 @@
       "category": "control",
       "hint": "control",
       "lspKind": "Keyword",
-      "description": "The else branch of an `if` expression or `try` expression, evaluated when the condition is false or the non-blocking operation is not immediately ready."
+      "description": "The else branch of an `if` expression or `try` expression, evaluated when the condition is false or the operation is not immediately ready."
     },
     "try": {
       "category": "control",
       "hint": "control",
       "lspKind": "Keyword",
       "astKind": ["expr/try_recv", "expr/try_send"],
-      "description": "A non-blocking send or receive attempt. If the operation can proceed immediately, the success branch is taken; otherwise the `else` branch is taken.\n\n**Example:**\n\n```anvil\ntry x = recv ep.msg { use(x) } else { fallback }\ntry send ep.msg(val) { success } else { fallback }\n```"
+      "description": "A send or receive *attempt*. If the operation can proceed immediately, the success branch is taken; otherwise the `else` branch is taken.\n\n**Example:**\n\n```anvil\ntry x = recv ep.msg { use(x) } else { fallback }\ntry send ep.msg(val) { success } else { fallback }\n```"
     },
     "try recv": {
       "category": "control",

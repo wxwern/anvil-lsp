@@ -66,6 +66,7 @@ export const AnvilSpannableSchema = z.looseObject({
       tid: z.number().int(),
       eid: z.number().int(),
       to_eid: z.number().int().nullable().optional(),
+      cycles: z.number().int().nullable().optional(),
     })
     .optional()
     .nullable(),

@@ -52,7 +52,7 @@
 
     "message_def": {
       "name": "message",
-      "description": "A message definition inside a channel class, specifying one communication event. It declares:\n - the direction (`left`/`right`)\n - the payload data type\n - the message lifetime, and \n - optional synchronisation modes for each side.\n\nThe direction marks the side a message is sent to. Thus, a `left` message is sent by senders on the `right` to recipients on the `left`, and vice versa.",
+      "description": "A message definition inside a channel class, specifying one communication event. It declares:\n - the direction (`left`/`right`)\n - the payload data type\n - the message lifetime, and \n - optional synchronisation modes for each side.\n\nThe direction marks the side a message is sent to. Thus, a `left` message is sent by senders on the `right` to recipients on the `left`, and vice versa.\n\nA message must be *sustained* for the duration of its declared lifetime for successful communication.",
       "examples": "```anvil\nleft req : (logic[8]@#1) @dyn - @dyn\n```"
     },
 
@@ -228,7 +228,7 @@
 
     "expr/assign": {
       "name": "register write",
-      "description": "A register write expression. Writes a value to a register or one of its fields/indices.\n\nThe write takes effect in the **next** clock cycle; the expression evaluates to `void` delayed by one cycle.",
+      "description": "A register write expression. Writes a value to a register or one of its fields/indices.\n\nThe write *consumes* a clock cycle, and only takes effect in the **next** clock cycle.\n\nThe expression evaluates to `void` *after the delay*.",
       "examples": "```anvil\nset r := expr\nset r.field := expr\nset r[i] := expr\n```"
     },
 
@@ -264,13 +264,13 @@
 
     "expr/wait": {
       "name": "wait",
-      "description": "The wait (sequencing) operator `>>`. Waits for the left-hand expression to complete, then starts the right-hand expression.\n\nEvaluates to the result of the right side.",
+      "description": "The wait (sequencing) operator `>>`. Waits for the left-hand expression to complete, then starts the right-hand expression.\n\nIf the left-hand expression *consumes* cycles (note: this is distinct from cycles *sustained* for the lifetime of a message), the right-hand expression will be delayed until the left-hand expression finishes consumption.\n\nEvaluates to the result of the right side.",
       "examples": "```anvil\nrecv ep.req >> send ep.resp(1'd1)\n```"
     },
 
     "expr/cycle": {
       "name": "cycle delay",
-      "description": "A `cycle N` expression. Delays execution for exactly `N` clock cycles.\n\nEvaluates to `void` after the delay.",
+      "description": "A `cycle N` expression. *Consumes* and delays subsequent execution by `N` clock cycles.\n\nEvaluates to `void` *after the delay*.",
       "examples": "```anvil\ncycle 3\n```"
     },
 
@@ -485,13 +485,13 @@
 
     "delay_pat/cycles": {
       "name": "cycle lifetime",
-      "description": "A lifetime of exactly `N` cycles.",
+      "description": "A lifetime of exactly `N` cycles. The value must be *sustained* for this duration to keep the communication valid.",
       "examples": "```anvil\n@#3 // valid for 3 cycles\n```"
     },
 
     "delay_pat/message": {
       "name": "message-relative lifetime",
-      "description": "A lifetime tied to the lifetime of another message, optionally offset by `N` cycles.",
+      "description": "A lifetime tied to the lifetime of another message, optionally offset by `N` cycles. Such a message must be *sustained* till the other message is exchanged, plus `N` cycles",
       "examples": "```anvil\n@req\n@req+1\n@req-2\n```"
     },
 

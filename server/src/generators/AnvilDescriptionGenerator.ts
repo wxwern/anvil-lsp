@@ -120,8 +120,8 @@ export class AnvilDescriptionGenerator {
    * e.g. "cycle 3" or "cycle 1/2/3" for multiple possible delays.
    */
   private static formatEventCycle(e: AnvilEventInfo): string {
-    if (e.delays && e.delays.length > 0) {
-      return 'cycle ' + e.delays.join('/');
+    if (e.prevDelays && e.prevDelays.length > 0) {
+      return 'cycle ' + e.prevDelays.join('/');
     }
     return 'cycle ?';
   }
@@ -132,25 +132,34 @@ export class AnvilDescriptionGenerator {
    */
   private static describeLifetime(node: AnvilAstNode): string {
     // Walk up ancestor chain until we find a node with event info
-    let current: AnvilAstNode = node;
-    while (current.event === null) {
-      const parent = current.up() as AnvilAstNode;
-      if (parent === current || parent.isRoot()) {
-        return '';
-      }
-      current = parent;
+    let event = node.event;
+    let current: AnvilAstNode | null = node;
+    while (!event && !current.isRoot()) {
+      current = (current as AnvilAstNode).up();
+      event = current?.event;
     }
 
-    const event = current.event!;
+    if (!event) {
+      return '';
+    }
+
+    const isOriginalNode = current === node;
+
     const startStr = this.formatEventCycle(event);
-    const sustained = current.sustainedTillEvent;
+    const sustained = node.sustainedTillEvent;
+    const blockingDelay = event.nextDelay ?? 0;
 
-    if (sustained) {
-      const endStr = this.formatEventCycle(sustained);
-      return `- Executed on \`${startStr}\`\n- Sustained till end of \`${endStr}\`\n`;
-    }
+    const execStr = ` - Executes on \`${startStr}\`\n`;
+    const blockingStr =
+      blockingDelay > 0 && isOriginalNode
+        ? ` - Consumes \`${blockingDelay}\` cycle(s)\n`
+        : '';
+    const sustainStr =
+      sustained && isOriginalNode
+        ? ` - Sustained till end of \`${this.formatEventCycle(sustained)}\`\n`
+        : '';
 
-    return `- Executed on \`${startStr}\`\n`;
+    return execStr + blockingStr + sustainStr;
   }
 
   /**
@@ -188,12 +197,12 @@ export class AnvilDescriptionGenerator {
         lifetimeStr = `- Must be sustained for \`${lifetime.ending.value}\` cycle(s)\n`;
         break;
       case 'message': {
-        lifetimeStr = `- Must be sustained for \`${lifetime.ending.value}\`'s lifetime duration`;
         const offset = lifetime.ending.offset;
-        if (offset) {
-          lifetimeStr += `, offset by \`${offset}\` cycle(s)`;
-        }
-        lifetimeStr += '\n';
+        lifetimeStr =
+          '- Must be sustained ' +
+          (offset
+            ? `till \`${offset}\` cycle(s) after \`${lifetime.ending.value}\` is exchanged`
+            : `till before \`${lifetime.ending.value}\` is exchanged`);
         break;
       }
       case 'eternal':
