@@ -2,6 +2,7 @@
 
 [Anvil](https://github.com/kisp-nus/anvil) [Language Server Protocol (LSP)](https://microsoft.github.io/language-server-protocol/) implementation, including prepared extensions for supported editors.
 
+![](./assets/screenshot.jpeg)
 
 ## Requires
 
