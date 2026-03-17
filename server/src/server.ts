@@ -588,7 +588,7 @@ connection.onCompletionResolve(async (item: CompletionItem) => {
   if (plainDesc && typeof plainDesc === 'string' && !filepath) {
     item.documentation = {
       kind: 'markdown',
-      value: includeExplanation ? plainDesc : '',
+      value: plainDesc,
     };
     return item;
   }
@@ -618,7 +618,7 @@ connection.onCompletionResolve(async (item: CompletionItem) => {
           ) || '';
 
         const descs = [];
-        if (plainDesc && includeExplanation) descs.push(plainDesc);
+        if (plainDesc) descs.push(plainDesc);
         if (defDesc) descs.push(defDesc);
 
         item.documentation = {

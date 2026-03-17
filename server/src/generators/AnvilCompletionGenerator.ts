@@ -660,7 +660,7 @@ export class AnvilCompletionGenerator {
                   node: msgDef,
                   desc: description ?? undefined,
                 },
-                'builtinKeyword',
+                'astNode',
               ),
             );
           }
@@ -698,6 +698,31 @@ export class AnvilCompletionGenerator {
         }
       };
 
+      let targetReplacementOld = '';
+      let targetReplacementNew = '';
+
+      if (rangeStartAnnotPrefix && hasRangeMidDash) {
+        // The start must match the end. We will inject a pattern than matches the exact same text.
+        const parsed = rangeStartAnnotPrefix.match(
+          /^#?([a-zA-Z_][a-zA-Z0-9_]*|[0-9]+)([+~]([0-9]*))$/,
+        );
+        if (parsed) {
+          const left = parsed[1];
+          const right = parsed[3] || '';
+          const leftNum = +left;
+          const rightNum = +right;
+          if (isNaN(leftNum)) {
+            // identifier+N
+            targetReplacementOld = `#${left}${right ? '+N' : ''}`;
+            targetReplacementNew = `#${left}${right ? '+' + rightNum : ''}`;
+          } else {
+            // number+N
+            targetReplacementOld = left ? (right ? '#I~N' : '#N') : '';
+            targetReplacementNew = `#${left}${right ? '~' + right : ''}`;
+          }
+        }
+      }
+
       // synchronisation part — one fixed entry per sync key, plus per-message entries for %s patterns
       for (const key of completionInfo.knownSyncTimingKeys) {
         const entry = completionInfo.getSyncTimingEntry(key)!;
@@ -710,12 +735,20 @@ export class AnvilCompletionGenerator {
           // Expand %s into one completion per sibling message
           for (const msgDef of messageDefs) {
             const msgName = msgDef.name!;
-            const rawLabel = key.replace(/%s/g, msgName);
-            const rawInsert = entry.insertText.replace(/%s/g, msgName);
+            let rawLabel = key.replace(/%s/g, msgName);
+            let rawInsert = entry.insertText.replace(/%s/g, msgName);
 
             if (!rawInsert.startsWith('#') && hashPresentInPrefix) {
               // The snippet doesn't start with # but the user already typed a # (not a match)
               continue;
+            }
+
+            if (targetReplacementOld) {
+              if (rawLabel !== targetReplacementOld) {
+                continue;
+              }
+              rawLabel = targetReplacementNew;
+              rawInsert = targetReplacementNew;
             }
 
             const finalLabel = hashReformat(rawLabel);
@@ -732,20 +765,31 @@ export class AnvilCompletionGenerator {
                   node: msgDef,
                   desc: description ?? undefined,
                 },
-                'builtinKeyword',
+                'astNode',
               ),
             );
           }
         } else {
           // For non-%s entries that already start with '#', strip the leading '#' from
           // label/insertText when H is empty (it would be a duplicate '#').
-          const finalLabel = hashReformat(key);
-          const finalInsert = hashReformat(entry.insertText);
+          let rawLabel = key;
+          let rawInsert = entry.insertText;
 
           if (!entry.insertText.startsWith('#') && hashPresentInPrefix) {
             // The snippet doesn't start with # but the user already typed a # (not a match)
             continue;
           }
+
+          if (targetReplacementOld && key !== 'dyn') {
+            if (rawLabel !== targetReplacementOld) {
+              continue;
+            }
+            rawLabel = targetReplacementNew;
+            rawInsert = targetReplacementNew;
+          }
+
+          const finalLabel = hashReformat(rawLabel);
+          const finalInsert = hashReformat(rawInsert);
 
           completionItems.push(
             AnvilCompletionDetail.create(
