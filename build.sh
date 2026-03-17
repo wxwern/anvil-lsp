@@ -20,14 +20,11 @@ footer() {
 
 build-anvil() {
     header "Building Anvil..."
-
-    git submodule update --init --recursive --remote
-    if [ $? -ne 0 ]; then
-        echo "Failed to retrieve submodules."
-        exit 1
-    fi
-
     cd ./anvil
+    git fetch >> /dev/null 2>&1
+    if [ -n "$(git diff --stat)" ]; then
+        echo "Warning: Anvil may not be up-to-date."
+    fi
     eval $(opam env) && opam install . --deps-only && dune build
     RESULT=$?
     RESULTS+=($RESULT)
