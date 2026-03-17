@@ -201,11 +201,9 @@ export class AnvilDescriptionGenerator {
         lifetimeStr =
           '- Must be sustained ' +
           (offset
-            ? (
-              offset > 0
-              ? `till \`${offset}\` cycle(s) after \`${lifetime.ending.value}\` is exchanged`
+            ? offset > 0
+              ? `till \`${offset}\` cycle(s) after \`${lifetime.ending.value}\` begins to be exchanged`
               : `till \`${-offset}\` cycle(s) before \`${lifetime.ending.value}\` is exchanged`
-            )
             : `till before \`${lifetime.ending.value}\` is exchanged`);
         break;
       }
