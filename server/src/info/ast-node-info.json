@@ -228,7 +228,7 @@
 
     "expr/assign": {
       "name": "register write",
-      "description": "A register write expression. Writes a value to a register or one of its fields/indices.\n\nThe write *consumes* a clock cycle, and only takes effect in the **next** clock cycle.\n\nThe expression evaluates to `void` *after the delay*.",
+      "description": "A register write expression. Writes a value to a register or one of its fields/indices.\n\nThe write *consumes* a clock cycle, only completing and taking effect in the **next** clock cycle.\n\nWriting to a *borrowed* register (one that is being read) in the same clock cycle is disallowed.",
       "examples": "```anvil\nset r := expr\nset r.field := expr\nset r[i] := expr\n```"
     },
 
@@ -270,7 +270,7 @@
 
     "expr/cycle": {
       "name": "cycle delay",
-      "description": "A `cycle N` expression. *Consumes* and delays subsequent execution by `N` clock cycles.\n\nEvaluates to `void` *after the delay*.",
+      "description": "A `cycle N` expression. *Consumes* and delays subsequent execution by `N` clock cycles.",
       "examples": "```anvil\ncycle 3\n```"
     },
 
@@ -354,7 +354,7 @@
 
     "expr/read": {
       "name": "register read",
-      "description": "A register read expression. Reads the current value of a register. The value is valid until the next write to that register.",
+      "description": "A register read expression. Reads the current value of a register. The value is valid until the next write to that register.\n\nReading *borrows* the register until it is done, disallowing write operations while it is being read.",
       "examples": "```anvil\n*counter\n*buf[i]\n*state.field\n```"
     },
 
@@ -365,13 +365,13 @@
 
     "expr/send": {
       "name": "send",
-      "description": "A send expression. Sends the given value to the recipient, following the timing contracts for this message.\n\nAttempting a send outside of such agreements results in compile-time errors.",
+      "description": "A send expression. Sends the given value to the recipient, following the timing contracts for this message.\n\nIf the timing contract requires dynamic synchronisation, handshakes are required (implicitly generated), thus the send expression *consumes* cycles until both sides are ready for message exchange.\n\nOtherwise, the value is *instantly* sent and consumes no cycles, but attempting sends violating the contract will result in compile-time errors.",
       "examples": "```anvil\nsend ep.req (8'd42)\n```"
     },
 
     "expr/recv": {
       "name": "recv",
-      "description": "A receive expression. Receives the value from the sender, following the timing contracts for this message.\n\nAttempting to receive outside of such agreements results in compile-time errors.",
+      "description": "A receive expression. Receives a value from the sender, following the timing contracts for this message.\n\nIf the timing contract requires dynamic synchronisation, handshakes are required (implicitly generated), thus the receive expression *consumes* cycles until both sides are ready for message exchange.\n\nOtherwise, the value is *instantly* received and consumes no cycles, but attempting receives violating the contract will result in compile-time errors.",
       "examples": "```anvil\nrecv ep.resp\n```"
     },
 

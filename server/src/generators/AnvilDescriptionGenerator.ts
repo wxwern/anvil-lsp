@@ -167,15 +167,55 @@ export class AnvilDescriptionGenerator {
    * e.g. "at any time", "every 4 cycle(s) starting at cycle 2",
    *      "1 cycle(s) after message xyz"
    */
-  private static formatSyncMode(sync: AnvilMessageSyncMode): string {
+  private static formatSyncMode(
+    endp: 'left' | 'right' | null,
+    context: 'send' | 'recv' | null,
+    sync: AnvilMessageSyncMode,
+    other: AnvilMessageSyncMode,
+  ): string {
+    let text = '';
     switch (sync.type) {
       case 'dynamic':
-        return 'at any time';
+        text = 'at any time';
+        break;
       case 'static':
-        return `every \`${sync.interval}\` cycle(s) starting on \`cycle ${sync.init}\``;
+        text = `every \`${sync.interval}\` cycle(s) starting on \`cycle ${sync.init}\`${
+          other.type === 'dynamic'
+            ? context === 'recv'
+              ? // we do a fixed receive from the other side's dynamic send
+                // -> our start point depends the other side actually sending
+                " of sender's send"
+              : // we do a fixed send to the other side's dynamic receive
+                // -> nothing to note for us
+                ''
+            : ''
+        }`;
+        break;
       case 'dependent':
-        return `\`${sync.delay}\` cycle(s) after message \`${sync.msg}\``;
+        text = `\`${sync.delay}\` cycle(s) after \`${sync.msg}\` begins exchange`;
+        break;
     }
+    if (endp) {
+      switch (context) {
+        case 'send':
+          text = `\`${endp}\` endpoint sends ${text}`;
+          break;
+        case 'recv':
+          text = `\`${endp}\` endpoint receives ${text}`;
+          break;
+      }
+    } else if (context) {
+      switch (context) {
+        case 'send':
+          text = `send ${text}`;
+          break;
+        case 'recv':
+          text = `receive ${text}`;
+          break;
+      }
+      text = sync.type === 'dynamic' ? `May ${text}` : `Must ${text}`;
+    }
+    return text;
   }
 
   /**
@@ -217,12 +257,14 @@ export class AnvilDescriptionGenerator {
     // Contextual mode: omit the endpoint side label (caller already knows which side they're on)
     if (context === 'send') {
       lifetimeStr =
-        `- May send ${this.formatSyncMode(msg.send_sync)}\n` + lifetimeStr;
+        `- ${this.formatSyncMode(null, context, msg.send_sync, msg.recv_sync)}\n` +
+        lifetimeStr;
       return lifetimeStr;
     }
     if (context === 'recv') {
       lifetimeStr =
-        `- May receive ${this.formatSyncMode(msg.recv_sync)}\n` + lifetimeStr;
+        `- ${this.formatSyncMode(null, context, msg.recv_sync, msg.send_sync)}\n` +
+        lifetimeStr;
       return lifetimeStr;
     }
 
@@ -230,12 +272,12 @@ export class AnvilDescriptionGenerator {
     //   "out" -> left sends,  right receives
     //   "in"  -> left receives, right sends
     const leftSends = msg.dir === 'out';
-    const senderSide = leftSends ? '`left`' : '`right`';
-    const receiverSide = leftSends ? '`right`' : '`left`';
+    const senderSide = leftSends ? 'left' : 'right';
+    const receiverSide = leftSends ? 'right' : 'left';
 
     // Full mode: include endpoint side labels
-    const sendLine = `- ${senderSide} endpoint sends ${this.formatSyncMode(msg.send_sync)}\n`;
-    const recvLine = `- ${receiverSide} endpoint receives ${this.formatSyncMode(msg.recv_sync)}\n`;
+    const sendLine = `- ${this.formatSyncMode(senderSide, 'send', msg.send_sync, msg.recv_sync)}\n`;
+    const recvLine = `- ${this.formatSyncMode(receiverSide, 'recv', msg.recv_sync, msg.send_sync)}\n`;
     if (leftSends) {
       return sendLine + recvLine + lifetimeStr;
     } else {
