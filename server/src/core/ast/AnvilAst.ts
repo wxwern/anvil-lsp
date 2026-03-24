@@ -626,23 +626,7 @@ export class AnvilAstNode<T = any, U extends AnvilAstNode | unknown = unknown> {
    * This implies the node's execution spans until the occurrence of the target event (inclusive).
    */
   get sustainedTillEvent(): AnvilEventInfo | null {
-    const tid = this.unsafeTraverse('event', 'tid').resolveAs(z.number());
-    const toEid = this.unsafeTraverse('event', 'to_eid').resolveAs(z.number());
-    const nextDelay = this.unsafeTraverse('event', 'cycles').resolveAs(
-      z.number(),
-    );
-
-    if (tid === null || toEid === null) {
-      return null;
-    }
-
-    const delays = this.get_event_prior_delays(tid, toEid);
-    return {
-      tid,
-      eid: toEid,
-      prevDelays: delays ?? undefined,
-      nextDelay: nextDelay ?? undefined,
-    };
+    return null; // Placeholder. Current anvil build cycle reporting is broken.
   }
 
   /**
