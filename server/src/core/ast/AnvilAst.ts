@@ -8,6 +8,8 @@ import {
   AnvilCompUnitSchema,
   type AnvilSpan,
   type AnvilCompUnit,
+  AnvilCycleTime,
+  AnvilCycleTimeSchema,
 } from './schema';
 import { astLogger } from '../../utils/logger';
 
@@ -79,8 +81,8 @@ export type AnvilAstNodeAbsolutePath = AnvilAstNodePath & {
 export type AnvilEventInfo = {
   tid: number;
   eid: number;
-  prevDelays?: number[];
-  nextDelay?: number;
+  prevDelay?: AnvilCycleTime;
+  nextDelay?: AnvilCycleTime;
 };
 
 /**
@@ -101,7 +103,7 @@ export type AnvilEventInfo = {
 export class AnvilAstNode<T = any, U extends AnvilAstNode | unknown = unknown> {
   private readonly _root: AnvilCompUnit;
   private readonly _eventIdCycleDelayLookup:
-    | { [proc: string]: { [tid: number]: { [eid: number]: number[] } } }
+    | { [proc: string]: { [tid: number]: { [eid: number]: AnvilCycleTime } } }
     | undefined = undefined;
 
   private readonly _path: AnvilAstNodeAbsolutePath;
@@ -140,7 +142,7 @@ export class AnvilAstNode<T = any, U extends AnvilAstNode | unknown = unknown> {
 
         for (const event of thread.events) {
           const eid = event.eid;
-          this._eventIdCycleDelayLookup[procName][tid][eid] = event.delays;
+          this._eventIdCycleDelayLookup[procName][tid][eid] = event.delay;
         }
       }
     }
@@ -568,7 +570,7 @@ export class AnvilAstNode<T = any, U extends AnvilAstNode | unknown = unknown> {
    * Convenience Accessors
    * ------------------------- */
 
-  private get_event_prior_delays(tid: number, eid: number): number[] | null {
+  private get_event_prior_delays(tid: number, eid: number): AnvilCycleTime | null {
     const eventGraphLookup = this.root._eventIdCycleDelayLookup;
     if (!eventGraphLookup) {
       return null;
@@ -593,8 +595,8 @@ export class AnvilAstNode<T = any, U extends AnvilAstNode | unknown = unknown> {
       return null;
     }
 
-    const result = eventGraphLookup?.[procName]?.[tid]?.[eid] ?? [];
-    return result.length > 0 ? result : null;
+    const result = eventGraphLookup?.[procName]?.[tid]?.[eid] ?? null;
+    return result;
   }
 
   /**
@@ -604,9 +606,7 @@ export class AnvilAstNode<T = any, U extends AnvilAstNode | unknown = unknown> {
   get event(): AnvilEventInfo | null {
     const tid = this.unsafeTraverse('event', 'tid').resolveAs(z.number());
     const eid = this.unsafeTraverse('event', 'eid').resolveAs(z.number());
-    const nextDelay = this.unsafeTraverse('event', 'cycles').resolveAs(
-      z.number(),
-    );
+    const nextDelay = this.unsafeTraverse('event', 'delay_to_exec').resolveAs(AnvilCycleTimeSchema);
 
     if (tid === null || eid === null) {
       return null;
@@ -616,8 +616,8 @@ export class AnvilAstNode<T = any, U extends AnvilAstNode | unknown = unknown> {
     return {
       tid,
       eid,
-      prevDelays: delays ?? undefined,
-      nextDelay: nextDelay ?? undefined,
+      prevDelay: delays ? [...delays] : undefined,
+      nextDelay: nextDelay ? [...nextDelay] : undefined,
     };
   }
 
@@ -626,7 +626,21 @@ export class AnvilAstNode<T = any, U extends AnvilAstNode | unknown = unknown> {
    * This implies the node's execution spans until the occurrence of the target event (inclusive).
    */
   get sustainedTillEvent(): AnvilEventInfo | null {
-    return null; // Placeholder. Current anvil build cycle reporting is broken.
+    const tid = this.unsafeTraverse('event', 'tid').resolveAs(z.number());
+    const toEid = this.unsafeTraverse('event', 'live_to_eid').resolveAs(z.number());
+    const nextDelay = this.unsafeTraverse('event', 'delay_to_exec').resolveAs(AnvilCycleTimeSchema);
+
+    if (tid === null || toEid === null) {
+      return null;
+    }
+
+    const delays = this.get_event_prior_delays(tid, toEid);
+    return {
+      tid,
+      eid: toEid,
+      prevDelay: delays ? [...delays] : undefined,
+      nextDelay: nextDelay ? [...nextDelay] : undefined,
+    };
   }
 
   /**

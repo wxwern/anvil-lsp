@@ -21,6 +21,55 @@ const AnvilAstSchemaVersionStringSchema = z
 // PRIMITIVES
 //
 
+/**
+ * A term in a cycle time sum expression.
+ *
+ * Possible terms (recursive):
+ *
+ * - An integer literal (e.g. { const: 5 })
+ * - A string literal representing an unknown (e.g. { sym: "n1" })
+ * - OR of a list of cycle time sums (e.g. { or: AnvilCycleTime[] })
+ * - MAX of a list of cycle time sums (e.g. { sym: "max3", max: AnvilCycleTime[] })
+ *
+ * A cycle time sum is represented as an array of terms that are added together.
+ * For example, "1 + (5 or n1) + max{n2, n3}" would be:
+ * [
+ *   { const: 1 },
+ *   { or: [[{ const: 5 }], [{ sym: "n1" }]] },
+ *   { sym: "max1", max: [[{ sym: "n2" }], [{ sym: "n3" }]] }
+ * ]
+ */
+
+// Dev note: Previously AnvilCycleTime = (int | str)[], which was a simpler array of constants or symbols.
+// Now it's an array of more complex term objects that can represent OR and MAX operations recursively.
+
+// Forward-declare for recursion
+export type AnvilCycleTimeTerm =
+  | { const: number }
+  | { sym: string }
+  | { sym?: string; or: AnvilCycleTime[] }
+  | { sym?: string; max: AnvilCycleTime[] };
+
+export type AnvilCycleTime = AnvilCycleTimeTerm[];
+
+export const AnvilCycleTimeTermSchema: z.ZodType<AnvilCycleTimeTerm> = z.lazy(() =>
+  z.union([
+    z.looseObject({ const: z.number().int() }),
+    z.looseObject({ sym: z.string() }),
+    z.looseObject({
+      sym: z.string().optional(),
+      or: z.array(z.lazy(() => AnvilCycleTimeSchema)),
+    }),
+    z.looseObject({
+      sym: z.string().optional(),
+      max: z.array(z.lazy(() => AnvilCycleTimeSchema)),
+    }),
+  ])
+);
+
+export const AnvilCycleTimeSchema: z.ZodType<AnvilCycleTime> = z.array(AnvilCycleTimeTermSchema);
+
+
 export const AnvilPositionSchema = z.looseObject({
   line: z.number().int(),
   col: z.number().int(),
@@ -65,8 +114,8 @@ export const AnvilSpannableSchema = z.looseObject({
     .looseObject({
       tid: z.number().int(),
       eid: z.number().int(),
-      to_eid: z.number().int().nullable().optional(),
-      cycles: z.number().int().nullable().optional(),
+      live_to_eid: z.number().int().nullable().optional(),
+      delay_to_exec: AnvilCycleTimeSchema.optional(),
     })
     .optional()
     .nullable(),
@@ -635,7 +684,7 @@ export const AnvilEventGraphSchema = z.looseObject({
       events: z.array(
         z.looseObject({
           eid: z.number().int(),
-          delays: z.array(z.number().int()).default([]),
+          delay: AnvilCycleTimeSchema.default([]),
           outs: z
             .array(
               z.looseObject({

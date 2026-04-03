@@ -9,6 +9,10 @@ import {
 } from '../core/ast/schema';
 import { astNodeInfo } from '../info/parsed';
 import { diagnosticsLogger } from '../utils/logger';
+import {
+  formatCycleTime,
+  isZeroCycleTime,
+} from '../utils/AnvilCycleTimeFormatter';
 
 export class AnvilDescriptionGenerator {
   private constructor() {}
@@ -117,13 +121,17 @@ export class AnvilDescriptionGenerator {
 
   /**
    * Formats an AnvilEventInfo as a human-friendly cycle string.
-   * e.g. "cycle 3" or "cycle 1/2/3" for multiple possible delays.
+   * e.g. "cycle 1 + (5/n1) + max{n2, n3}" for complex delays.
    */
   private static formatEventCycle(e: AnvilEventInfo): string {
-    if (e.prevDelays && e.prevDelays.length > 0) {
-      return 'cycle ' + e.prevDelays.join('/');
+    const prevDelays = e.prevDelay;
+
+    if (!prevDelays) {
+      return 'cycle ?';
     }
-    return 'cycle ?';
+
+    const formatted = formatCycleTime(prevDelays);
+    return 'cycle ' + formatted;
   }
 
   /**
@@ -147,12 +155,12 @@ export class AnvilDescriptionGenerator {
 
     const startStr = this.formatEventCycle(event);
     const sustained = node.sustainedTillEvent;
-    const blockingDelay = event.nextDelay ?? 0;
+    const blockingDelay = event.nextDelay;
 
     const execStr = ` - Executes on \`${startStr}\`\n`;
     const blockingStr =
-      blockingDelay > 0 && isOriginalNode
-        ? ` - Consumes \`${blockingDelay}\` cycle(s)\n`
+      blockingDelay && !isZeroCycleTime(blockingDelay) && isOriginalNode
+        ? ` - Consumes \`${formatCycleTime(blockingDelay)}\` cycle(s)\n`
         : '';
     const sustainStr =
       sustained && isOriginalNode

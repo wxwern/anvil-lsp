@@ -7,6 +7,11 @@ import { AnvilLspUtils } from '../utils/AnvilLspUtils';
 import { inlayHintLogger } from '../utils/logger';
 import { AnvilDocument } from '../core/AnvilDocument';
 import { AnvilEventInfo } from '../core/ast/AnvilAst';
+import {
+  formatCycleTime,
+  hasSymbolicParts,
+  isZeroCycleTime,
+} from '../utils/AnvilCycleTimeFormatter';
 
 export class AnvilInlayHintGenerator {
   private constructor() {}
@@ -79,12 +84,16 @@ export class AnvilInlayHintGenerator {
       if (e === null) return null;
 
       const eid = e.eid;
-      const delays = e.prevDelays;
+      const delays = e.prevDelay;
+      const hasUnknown = delays ? hasSymbolicParts(delays) : false;
+      const formattedDelay = delays
+        ? formatCycleTime(delays, { ascii, compact: true, maxLength: 12 })
+        : '';
 
       const debugEid = options.debug ? ` (e${eid})` : '';
       const cyclePrefix = options.mode === 'full' ? 'cycle ' : 'c';
       const delayStr = delays
-        ? cyclePrefix + delays.map((d) => '' + d).join('/') + debugEid
+        ? cyclePrefix + (hasUnknown || formattedDelay.length > 3 ? '{' + formattedDelay + '}' : formattedDelay) + debugEid
         : '';
 
       return delayStr || `${cyclePrefix}?${debugEid}`;
@@ -95,7 +104,7 @@ export class AnvilInlayHintGenerator {
       if (!node) continue;
       const event = formatEvent(node.event);
       const susTillEv = formatEvent(node.sustainedTillEvent);
-      const nextDelay = node.event?.nextDelay ?? 0;
+      const nextDelay = node.event?.nextDelay ?? [];
 
       if (!event) continue;
 
@@ -129,10 +138,16 @@ export class AnvilInlayHintGenerator {
       let postfixText = '';
 
       // postfix: indicate if this results in a forced delay
-      if (nextDelay > 0) {
+      if (nextDelay && !isZeroCycleTime(nextDelay)) {
         const waitLabel = ascii || options.mode === 'full' ? '+' : '⧖';
         const cycleUnit = options.mode === 'condensed' ? 'c' : ' cycle(s)';
-        const waitDesc = ` ${waitLabel} ${nextDelay ?? 0}${cycleUnit}`;
+        const hasUnknown = hasSymbolicParts(nextDelay);
+        const formattedNextDelay = formatCycleTime(nextDelay, { ascii });
+        const wrappedFormattedNextDelay =
+          hasUnknown || formattedNextDelay.length > 3
+            ? '{' + formattedNextDelay + '}'
+            : formattedNextDelay;
+        const waitDesc = ` ${waitLabel} ${wrappedFormattedNextDelay}${cycleUnit}`;
         postfixText += waitDesc;
       }
 
