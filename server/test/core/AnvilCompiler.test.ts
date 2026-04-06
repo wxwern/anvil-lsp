@@ -21,11 +21,13 @@ function _hashCode(str: string): number {
 
 describe('AnvilCompiler', () => {
   let projectRoot: string;
+  let anvilBinaryPath: string;
   let compiler: AnvilCompiler;
 
   beforeEach(() => {
     projectRoot = path.resolve(__dirname, '../../..');
-    compiler = new AnvilCompiler(projectRoot);
+    anvilBinaryPath = path.join(projectRoot, 'bin', 'anvil');
+    compiler = new AnvilCompiler(projectRoot, anvilBinaryPath);
   });
 
   it('should compile valid file and produce expected output', async () => {
