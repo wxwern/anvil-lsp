@@ -132,6 +132,12 @@ This repository includes a submodule of Anvil, pinned to a version with guarante
     git clone --recurse-submodules https://github.com/wxwern/anvil-lsp.git
     ```
 
+   If you have already cloned it without submodules, you can retrieve submodules like so:
+    ```bash
+    git submodule update --init --recursive --remote
+    ```
+
+
 2. Build and install the pinned Anvil version with experimental AST output support:
     ```bash
     cd anvil-lsp/anvil
@@ -139,6 +145,20 @@ This repository includes a submodule of Anvil, pinned to a version with guarante
     ```
 
 ---
+
+## Update Scripts
+
+You can update this repo and forcibly resync submodules as such:
+
+```bash
+# retrieves updated changes for server and submodules
+./update.sh
+
+# like above, but as separate invocations:
+./update.sh server
+./update.sh submodules
+```
+
 
 ## Development Workflows
 
