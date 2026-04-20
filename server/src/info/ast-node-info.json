@@ -22,13 +22,13 @@
 
     "func_def": {
       "name": "function",
-      "description": "A function definition, declaring an expression-level macro.\n\nCalling a function inlines the body at the call site - functions do not produce hardware modules.",
+      "description": "A function definition, declaring a reusable macro that, when invoked, expands to the contained expression.\n\nCalling a function inlines the body at the call site - functions do not produce hardware modules.",
       "examples": "```anvil\nfunc add(a : logic[8], b : logic[8]) { a + b }\n```"
     },
 
     "macro_def": {
       "name": "constant",
-      "description": "A constant (macro) definition, binding an integer identifier to a compile-time integer value.\n\nConstants can be used wherever an integer literal is expected, such as array sizes.",
+      "description": "A constant definition, binding an identifier to a compile-time value. Also known as a macro, and currently only supports integers.\n\nConstant integers can be used wherever an integer literal is expected, such as array sizes.",
       "examples": "```anvil\nconst WIDTH = 8;\n```"
     },
 
@@ -365,13 +365,13 @@
 
     "expr/send": {
       "name": "send",
-      "description": "A send expression. Sends the given value to the recipient, following the timing contracts for this message.\n\nIf the timing contract requires dynamic synchronisation, handshakes are required (implicitly generated), thus the send expression *consumes* cycles until both sides are ready for message exchange.\n\nOtherwise, the value is *instantly* sent and consumes no cycles, but attempting sends violating the contract will result in compile-time errors.",
+      "description": "A send expression. Sends the given value to the recipient, following the timing contracts for this message.\n\nIf the timing contract requires dynamic synchronisation, handshakes are required (implicitly generated), thus the send expression *consumes* cycles until both sides are ready for message exchange. Otherwise, the value is *instantly* sent and consumes no cycles.\n\nIn any case, attempting sends violating the contract will result in compile-time errors.",
       "examples": "```anvil\nsend ep.req (8'd42)\n```"
     },
 
     "expr/recv": {
       "name": "recv",
-      "description": "A receive expression. Receives a value from the sender, following the timing contracts for this message.\n\nIf the timing contract requires dynamic synchronisation, handshakes are required (implicitly generated), thus the receive expression *consumes* cycles until both sides are ready for message exchange.\n\nOtherwise, the value is *instantly* received and consumes no cycles, but attempting receives violating the contract will result in compile-time errors.",
+      "description": "A receive expression. Receives a value from the sender, following the timing contracts for this message.\n\nIf the timing contract requires dynamic synchronisation, handshakes are required (implicitly generated), thus the receive expression *consumes* cycles until both sides are ready for message exchange. Otherwise, the value is *instantly* received and consumes no cycles.\n\nIn any case, attempting receives violating the contract will result in compile-time errors.",
       "examples": "```anvil\nrecv ep.resp\n```"
     },
 
