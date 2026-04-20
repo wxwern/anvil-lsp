@@ -6,7 +6,7 @@
 
 ## Requires
 
-- Anvil [`6199e2b` or later](https://github.com/wxwern/anvil/tree/add-annotated-ast-output) with **experimental AST output** support.
+- Anvil [`6199e2b` or later](https://github.com/wxwern/anvil/tree/add-annotated-ast-output) with **experimental AST output** support. For best results, you may use the pinned version included as a submodule in this repository.
 
 - [Node.js](https://nodejs.org/en) version 22 or later.
 
