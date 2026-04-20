@@ -52,23 +52,25 @@ export type AnvilCycleTimeTerm =
 
 export type AnvilCycleTime = AnvilCycleTimeTerm[];
 
-export const AnvilCycleTimeTermSchema: z.ZodType<AnvilCycleTimeTerm> = z.lazy(() =>
-  z.union([
-    z.looseObject({ const: z.number().int() }),
-    z.looseObject({ sym: z.string() }),
-    z.looseObject({
-      sym: z.string().optional(),
-      or: z.array(z.lazy(() => AnvilCycleTimeSchema)),
-    }),
-    z.looseObject({
-      sym: z.string().optional(),
-      max: z.array(z.lazy(() => AnvilCycleTimeSchema)),
-    }),
-  ])
+export const AnvilCycleTimeTermSchema: z.ZodType<AnvilCycleTimeTerm> = z.lazy(
+  () =>
+    z.union([
+      z.looseObject({ const: z.number().int() }),
+      z.looseObject({ sym: z.string() }),
+      z.looseObject({
+        sym: z.string().optional(),
+        or: z.array(z.lazy(() => AnvilCycleTimeSchema)),
+      }),
+      z.looseObject({
+        sym: z.string().optional(),
+        max: z.array(z.lazy(() => AnvilCycleTimeSchema)),
+      }),
+    ]),
 );
 
-export const AnvilCycleTimeSchema: z.ZodType<AnvilCycleTime> = z.array(AnvilCycleTimeTermSchema);
-
+export const AnvilCycleTimeSchema: z.ZodType<AnvilCycleTime> = z.array(
+  AnvilCycleTimeTermSchema,
+);
 
 export const AnvilPositionSchema = z.looseObject({
   line: z.number().int(),
@@ -103,7 +105,7 @@ export type AnvilDefSpan = z.infer<typeof AnvilDefSpanSchema>;
  *
  * Matches ast_node_to_yojson output where:
  *   - "span" is the code_span
- *   - "event" is the action_event (tid, eid, optional to_eid)
+ *   - "event" is the action_event (tid, eid, optional sustain_lifetime)
  *   - "def_span" is the array of definition spans
  */
 export const AnvilSpannableSchema = z.looseObject({
@@ -114,7 +116,7 @@ export const AnvilSpannableSchema = z.looseObject({
     .looseObject({
       tid: z.number().int(),
       eid: z.number().int(),
-      live_to_eid: z.number().int().nullable().optional(),
+      sustain_lifetime: AnvilCycleTimeSchema.nullable().optional(),
       delay_to_exec: AnvilCycleTimeSchema.optional(),
     })
     .optional()

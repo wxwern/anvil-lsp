@@ -93,7 +93,11 @@ export class AnvilInlayHintGenerator {
       const debugEid = options.debug ? ` (e${eid})` : '';
       const cyclePrefix = options.mode === 'full' ? 'cycle ' : 'c';
       const delayStr = delays
-        ? cyclePrefix + (hasUnknown || formattedDelay.length > 3 ? '{' + formattedDelay + '}' : formattedDelay) + debugEid
+        ? cyclePrefix +
+          (hasUnknown || formattedDelay.length > 3
+            ? '{' + formattedDelay + '}'
+            : formattedDelay) +
+          debugEid
         : '';
 
       return delayStr || `${cyclePrefix}?${debugEid}`;
@@ -103,7 +107,7 @@ export class AnvilInlayHintGenerator {
       const node = anvilDocument.anvilAst?.node(loc);
       if (!node) continue;
       const event = formatEvent(node.event);
-      const susTillEv = formatEvent(node.sustainedTillEvent);
+      const sustainLifetime = node.sustainLifetime;
       const nextDelay = node.event?.nextDelay ?? [];
 
       if (!event) continue;
@@ -151,12 +155,12 @@ export class AnvilInlayHintGenerator {
         postfixText += waitDesc;
       }
 
-      // postfix: indicate sustained till event info, if applicable
+      // postfix: indicate sustain lifetime info, if applicable
       const sustainSymbol = ascii ? '~>' : '↘';
-      postfixText += susTillEv
+      postfixText += sustainLifetime
         ? options.mode === 'full'
-          ? ` sustained till ${susTillEv} ends`
-          : ` ${sustainSymbol} ${susTillEv}`
+          ? ` sustained for ${formatCycleTime(sustainLifetime, { ascii })} cycle(s) after execution`
+          : ` ${sustainSymbol} ${formatCycleTime(sustainLifetime, { ascii, compact: true, maxLength: 12 })}c`
         : '';
 
       if (postfixText && lspEndCol !== undefined) {

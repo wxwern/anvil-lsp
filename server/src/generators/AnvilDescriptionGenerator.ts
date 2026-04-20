@@ -13,6 +13,7 @@ import {
   formatCycleTime,
   isZeroCycleTime,
 } from '../utils/AnvilCycleTimeFormatter';
+import { computeSustainEndCycle } from '../utils/AnvilCycleTimeCalculator';
 
 export class AnvilDescriptionGenerator {
   private constructor() {}
@@ -154,20 +155,30 @@ export class AnvilDescriptionGenerator {
     const isOriginalNode = current === node;
 
     const startStr = this.formatEventCycle(event);
-    const sustained = node.sustainedTillEvent;
+    const sustainLifetime = node.sustainLifetime;
     const blockingDelay = event.nextDelay;
 
     const execStr = ` - Executes on \`${startStr}\`\n`;
     const blockingStr =
       blockingDelay && !isZeroCycleTime(blockingDelay) && isOriginalNode
-        ? ` - Consumes \`${formatCycleTime(blockingDelay)}\` cycle(s)\n`
+        ? ` - Consumes \`${formatCycleTime(blockingDelay)}\` cycle(s) during execution\n`
         : '';
-    const sustainStr =
-      sustained && isOriginalNode
-        ? ` - Sustained till end of \`${this.formatEventCycle(sustained)}\`\n`
+    const sustainLifetimeStr =
+      sustainLifetime && isOriginalNode
+        ? ` - Sustains for \`${formatCycleTime(sustainLifetime)}\` cycle(s) after execution\n`
+        : '';
+    const sustainEndCycleStr =
+      sustainLifetime && isOriginalNode
+        ? `   - till before \`cycle ${formatCycleTime(
+            computeSustainEndCycle(
+              event.prevDelay,
+              event.nextDelay,
+              sustainLifetime,
+            ),
+          )}\`\n`
         : '';
 
-    return execStr + blockingStr + sustainStr;
+    return execStr + blockingStr + sustainLifetimeStr + sustainEndCycleStr;
   }
 
   /**
@@ -242,21 +253,21 @@ export class AnvilDescriptionGenerator {
     let lifetimeStr;
     switch (lifetime?.ending.type) {
       case 'cycles':
-        lifetimeStr = `- Must be sustained for \`${lifetime.ending.value}\` cycle(s)\n`;
+        lifetimeStr = `- Must sustain for \`${lifetime.ending.value}\` cycle(s) after execution\n`;
         break;
       case 'message': {
         const offset = lifetime.ending.offset;
         lifetimeStr =
-          '- Must be sustained ' +
+          '- Must sustain ' +
           (offset
             ? offset > 0
-              ? `till \`${offset}\` cycle(s) after \`${lifetime.ending.value}\` begins to be exchanged\n`
-              : `till \`${-offset}\` cycle(s) before \`${lifetime.ending.value}\` is exchanged\n`
-            : `till before \`${lifetime.ending.value}\` is exchanged\n`);
+              ? `until \`${offset}\` cycle(s) after \`${lifetime.ending.value}\` begins to be exchanged\n`
+              : `until \`${-offset}\` cycle(s) before \`${lifetime.ending.value}\` is exchanged\n`
+            : `until before \`${lifetime.ending.value}\` is exchanged\n`);
         break;
       }
       case 'eternal':
-        lifetimeStr = `- Must be sustained indefinitely\n`;
+        lifetimeStr = `- Must sustain indefinitely after execution\n`;
         break;
       default:
         lifetimeStr = '';
@@ -578,12 +589,13 @@ export class AnvilDescriptionGenerator {
 
     // populate lifetime segment
     if (segments?.lifetime) {
-      const lifetimeParts: string[] = [];
+      const contractParts: string[] = [];
+      const executionParts: string[] = [];
 
       // message_def: show its timing contracts
       if (node.kind === 'message_def') {
         const contracts = this.describeMessageDefContracts(node);
-        if (contracts) lifetimeParts.push(contracts);
+        if (contracts) contractParts.push(contracts);
       }
 
       if (node.kind === 'expr') {
@@ -603,7 +615,7 @@ export class AnvilDescriptionGenerator {
                 defNode,
                 context,
               );
-              if (contracts) lifetimeParts.push(contracts);
+              if (contracts) contractParts.push(contracts);
               break;
             }
           }
@@ -612,18 +624,27 @@ export class AnvilDescriptionGenerator {
 
       // All nodes: show event timing if available
       const lifetimeDesc = this.describeLifetime(node);
-      if (lifetimeDesc) lifetimeParts.push(lifetimeDesc);
+      if (lifetimeDesc) executionParts.push(lifetimeDesc);
 
       // Merge parts together with a header if there are any
-      if (lifetimeParts.length > 0) {
+      if (contractParts.length > 0 || executionParts.length > 0) {
+        const sectionParts: string[] = [];
+        if (contractParts.length > 0) {
+          sectionParts.push('**Timing Contract:**\n' + contractParts.join(''));
+        }
+        if (executionParts.length > 0) {
+          sectionParts.push(
+            '**Expression Lifetime:**\n' + executionParts.join(''),
+          );
+        }
+
         const hasAbove = !!(
           documentationSegment ||
           codeSegment ||
           definitionsSegment
         );
         const sep = hasAbove ? '\n\n---\n\n' : '';
-        lifetimeSegment =
-          sep + '**Lifetime:**\n\n' + lifetimeParts.join('') + '\n';
+        lifetimeSegment = sep + sectionParts.join('\n') + '\n';
       }
     }
 

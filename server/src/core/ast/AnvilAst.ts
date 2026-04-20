@@ -570,7 +570,10 @@ export class AnvilAstNode<T = any, U extends AnvilAstNode | unknown = unknown> {
    * Convenience Accessors
    * ------------------------- */
 
-  private get_event_prior_delays(tid: number, eid: number): AnvilCycleTime | null {
+  private get_event_prior_delays(
+    tid: number,
+    eid: number,
+  ): AnvilCycleTime | null {
     const eventGraphLookup = this.root._eventIdCycleDelayLookup;
     if (!eventGraphLookup) {
       return null;
@@ -606,7 +609,9 @@ export class AnvilAstNode<T = any, U extends AnvilAstNode | unknown = unknown> {
   get event(): AnvilEventInfo | null {
     const tid = this.unsafeTraverse('event', 'tid').resolveAs(z.number());
     const eid = this.unsafeTraverse('event', 'eid').resolveAs(z.number());
-    const nextDelay = this.unsafeTraverse('event', 'delay_to_exec').resolveAs(AnvilCycleTimeSchema);
+    const nextDelay = this.unsafeTraverse('event', 'delay_to_exec').resolveAs(
+      AnvilCycleTimeSchema,
+    );
 
     if (tid === null || eid === null) {
       return null;
@@ -622,25 +627,21 @@ export class AnvilAstNode<T = any, U extends AnvilAstNode | unknown = unknown> {
   }
 
   /**
-   * Obtains the event that this node is sustained till, if applicable.
-   * This implies the node's execution spans until the occurrence of the target event (inclusive).
+   * Obtains the value lifetime of this node's event, if applicable.
+   *
+   * This is represented as an AnvilCycleTime expression indicating how many
+   * cycles the value remains alive after execution.
    */
-  get sustainedTillEvent(): AnvilEventInfo | null {
-    const tid = this.unsafeTraverse('event', 'tid').resolveAs(z.number());
-    const toEid = this.unsafeTraverse('event', 'live_to_eid').resolveAs(z.number());
-    const nextDelay = this.unsafeTraverse('event', 'delay_to_exec').resolveAs(AnvilCycleTimeSchema);
+  get sustainLifetime(): AnvilCycleTime | null {
+    const lifetime = this.unsafeTraverse('event', 'sustain_lifetime').resolveAs(
+      AnvilCycleTimeSchema,
+    );
 
-    if (tid === null || toEid === null) {
+    if (lifetime === null) {
       return null;
     }
 
-    const delays = this.get_event_prior_delays(tid, toEid);
-    return {
-      tid,
-      eid: toEid,
-      prevDelay: delays ? [...delays] : undefined,
-      nextDelay: nextDelay ? [...nextDelay] : undefined,
-    };
+    return [...lifetime];
   }
 
   /**

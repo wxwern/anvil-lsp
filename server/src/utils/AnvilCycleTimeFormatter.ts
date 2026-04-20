@@ -31,8 +31,8 @@ function compareTerm(a: AnvilCycleTimeTerm, b: AnvilCycleTimeTerm): number {
   const bIsConst = 'const' in b;
   const aIsSym = 'sym' in a && !('max' in a) && !('or' in a);
   const bIsSym = 'sym' in b && !('max' in b) && !('or' in b);
-  const aIsMaxOrOr = ('max' in a) || ('or' in a);
-  const bIsMaxOrOr = ('max' in b) || ('or' in b);
+  const aIsMaxOrOr = 'max' in a || 'or' in a;
+  const bIsMaxOrOr = 'max' in b || 'or' in b;
 
   if (aIsSym && !bIsSym) return -1; // Symbolic variables first
   if (!aIsSym && bIsSym) return 1;
@@ -99,7 +99,12 @@ function compareCycleTimes(a: AnvilCycleTime, b: AnvilCycleTime): number {
  * @param parenthesize Whether to include parentheses around sub-expressions
  * @returns Formatted string representation
  */
-function formatTerm(term: AnvilCycleTimeTerm, ascii: boolean, compact: boolean, parenthesize: boolean): string {
+function formatTerm(
+  term: AnvilCycleTimeTerm,
+  ascii: boolean,
+  compact: boolean,
+  parenthesize: boolean,
+): string {
   const ellipsis = ascii ? '...' : '…';
 
   // Constant value
@@ -115,16 +120,22 @@ function formatTerm(term: AnvilCycleTimeTerm, ascii: boolean, compact: boolean, 
   // Max operation
   if ('max' in term) {
     const formatted = term.max
-      .map(s => s.sort(compareTerm))
+      .map((s) => s.sort(compareTerm))
       .sort(compareCycleTimes)
-      .map(sum => formatCycleTime(sum, { ascii, compact, parenthesize: true /*forced for inner terms*/ }));
+      .map((sum) =>
+        formatCycleTime(sum, {
+          ascii,
+          compact,
+          parenthesize: true /*forced for inner terms*/,
+        }),
+      );
 
     const prefix = 'sym' in term ? term.sym : 'max';
     const separator = compact ? '/' : ', ';
     const result =
       compact && formatted.length > 3
-      ? `${ellipsis}${separator}${formatted.slice(- 2).join(separator)}`
-      : formatted.join(separator);
+        ? `${ellipsis}${separator}${formatted.slice(-2).join(separator)}`
+        : formatted.join(separator);
 
     if (formatted.length > 1 || parenthesize) {
       return `${prefix}{${result}}`;
@@ -136,16 +147,22 @@ function formatTerm(term: AnvilCycleTimeTerm, ascii: boolean, compact: boolean, 
   // Or operation
   if ('or' in term && Array.isArray(term.or)) {
     const formatted = term.or
-      .map(s => s.sort(compareTerm))
+      .map((s) => s.sort(compareTerm))
       .sort(compareCycleTimes)
-      .map(sum => formatCycleTime(sum, { ascii, compact, parenthesize: true /*forced for inner terms*/ }));
+      .map((sum) =>
+        formatCycleTime(sum, {
+          ascii,
+          compact,
+          parenthesize: true /*forced for inner terms*/,
+        }),
+      );
 
     const prefix = 'sym' in term ? term.sym : '';
     const separator = compact ? '/' : ' / ';
     const result =
       compact && formatted.length > 3
-      ? `${ellipsis}${separator}${formatted.slice(- 2).join(separator)}`
-      : formatted.join(separator);
+        ? `${ellipsis}${separator}${formatted.slice(-2).join(separator)}`
+        : formatted.join(separator);
 
     if (formatted.length > 1 || parenthesize) {
       if (prefix) {
@@ -183,7 +200,12 @@ export function formatCycleTime(
   cycleTime: AnvilCycleTime,
   options: FormatCycleTimeOptions = {},
 ): string {
-  const { maxLength, ascii = false, compact = false, parenthesize = false } = options;
+  const {
+    maxLength,
+    ascii = false,
+    compact = false,
+    parenthesize = false,
+  } = options;
 
   if (cycleTime.length === 0) {
     return '0';
@@ -209,7 +231,9 @@ export function formatCycleTime(
   // Sort terms: symbolic variables first, then max/or terms, then constants
   symTerms.sort(compareTerm);
 
-  const formatted = symTerms.map((term) => formatTerm(term, ascii, compact, parenthesize));
+  const formatted = symTerms.map((term) =>
+    formatTerm(term, ascii, compact, parenthesize),
+  );
 
   // merge identical terms (e.g. n1 + n1 -> 2*n1)
   const termCounts: Record<string, number> = {};
@@ -217,16 +241,20 @@ export function formatCycleTime(
     termCounts[term] = (termCounts[term] || 0) + 1;
   }
 
-  const prelimResult = Object.entries(termCounts)
-    .map(([term, count]) => (count > 1 ? `${count}*${term}` : term))
+  const prelimResult = Object.entries(termCounts).map(([term, count]) =>
+    count > 1 ? `${count}*${term}` : term,
+  );
 
   // truncate backwards if needed
   const plus = compact ? '+' : ' + ';
   const gapLen = plus.length;
   let stripped = false;
   let totalLength =
-    constTerm > 0 ? constTerm.toString().length + gapLen : 0 +
-    prelimResult.reduce((sum, term) => sum + term.length + gapLen, 0) - gapLen;
+    constTerm > 0
+      ? constTerm.toString().length + gapLen
+      : 0 +
+        prelimResult.reduce((sum, term) => sum + term.length + gapLen, 0) -
+        gapLen;
 
   prelimResult.reverse();
   while (maxLength && totalLength > maxLength - ellipsis.length - gapLen) {

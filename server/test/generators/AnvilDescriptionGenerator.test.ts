@@ -389,7 +389,7 @@ describe('AnvilDescriptionGenerator', function () {
 
         assert.match(
           output,
-          /Must be sustained for.*cycle/gm,
+          /Must sustain for.*cycle.*after execution/gm,
           'should mention the sustained requirement',
         );
 
@@ -444,7 +444,7 @@ describe('AnvilDescriptionGenerator', function () {
 
         assert.match(
           output,
-          /Must be sustained for.*cycle/gm,
+          /Must sustain for.*cycle.*after execution/gm,
           'should mention the sustained requirement',
         );
 
@@ -492,13 +492,26 @@ describe('AnvilDescriptionGenerator', function () {
 
         assert.match(
           output,
-          /Must be sustained for.*cycle/gm,
+          /Must sustain for.*cycle.*after execution/gm,
           'should mention the sustained requirement',
         );
 
-        assert.ok(
-          output.includes('Executes on'),
+        assert.match(
+          output,
+          /Executes on.*cycle/gm,
           'should include execution cycle timing info',
+        );
+
+        assert.match(
+          output,
+          /Sustains for.*cycle.*after execution/gm,
+          'should include sustain duration info',
+        );
+
+        assert.match(
+          output,
+          /till before `cycle /,
+          'should include sustain ending timestamp',
         );
 
         // Checking that we don't refer to "endpoint" as the recv expression context
@@ -547,7 +560,7 @@ describe('AnvilDescriptionGenerator', function () {
 
         assert.match(
           output,
-          /Must be sustained for.*cycle/gm,
+          /Must sustain for.*cycle.*after execution/gm,
           'should mention the sustained requirement',
         );
 
@@ -555,7 +568,6 @@ describe('AnvilDescriptionGenerator', function () {
           output.includes('Executes on'),
           'should include execution cycle timing info',
         );
-
         // Checking that we don't refer to "endpoint" as the send expression context
         // already implies the endpoint. This ensures the description is concise.
         assert.ok(
@@ -867,13 +879,21 @@ describe('AnvilDescriptionGenerator', function () {
         assert.match(output, /---/, 'should include separator');
         assert.match(
           output,
-          /\*\*Lifetime:\*\*/,
-          'should include Lifetime header',
+          /\*\*Timing Contract:\*\*/,
+          'should include Timing Contract header',
+        );
+        assert.match(
+          output,
+          /\*\*Expression Lifetime:\*\*/,
+          'should include Expression Lifetime header',
         );
 
         const codeIndex = output.indexOf('```anvil');
         const separatorIndex = output.indexOf('---');
-        const lifetimeIndex = output.indexOf('**Lifetime:**');
+        const lifetimeIndex = Math.max(
+          output.indexOf('**Timing Contract:**'),
+          output.indexOf('**Expression Lifetime:**'),
+        );
         assert.ok(
           codeIndex < separatorIndex,
           'code should appear before separator',
@@ -957,8 +977,8 @@ describe('AnvilDescriptionGenerator', function () {
         assert.match(output, /---/, 'should include separator');
         assert.match(
           output,
-          /\*\*Lifetime:\*\*/,
-          'should include Lifetime header',
+          /\*\*Timing Contract:\*\*/,
+          'should include Timing Contract header',
         );
       });
     });
@@ -990,7 +1010,10 @@ describe('AnvilDescriptionGenerator', function () {
         // Find indices of each segment
         const codeIndex = output.indexOf('```anvil');
         const definitionsIndex = output.indexOf('**Definitions:**');
-        const lifetimeIndex = output.indexOf('**Lifetime:**');
+        const lifetimeIndex = Math.max(
+          output.indexOf('**Timing Contract:**'),
+          output.indexOf('**Expression Lifetime:**'),
+        );
 
         // Verify order: code -> definitions -> lifetime -> explanations
         assert.ok(codeIndex !== -1, 'should contain code segment');
@@ -1043,7 +1066,7 @@ describe('AnvilDescriptionGenerator', function () {
 
         const segments = [
           { name: 'code', marker: '```anvil' },
-          { name: 'lifetime', marker: '**Lifetime:**' },
+          { name: 'lifetime', marker: '**Timing Contract:**' },
           { name: 'explanations', marker: '**Anvil Info:**' },
         ];
 

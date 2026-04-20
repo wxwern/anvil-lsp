@@ -125,7 +125,8 @@ describe('AnvilInlayHintGenerator', function () {
   describe('mode testing', function () {
     const SUSTAINED_SYMBOL = '↘';
     const SUSTAINED_SYMBOL_ASCII = '~>';
-    const SUSTAINED_TEXT_PATTERN = /sustained till .+ ends/;
+    const SUSTAINED_TEXT_PATTERN =
+      /sustained for .+ cycle\(s\) after execution/;
 
     describe('showTimingInfo: "none"', function () {
       const settings = {
@@ -191,16 +192,16 @@ describe('AnvilInlayHintGenerator', function () {
         );
       });
 
-      it('should not use verbose "sustained till" text', function () {
+      it('should not use verbose "sustained for" text', function () {
         // Should not have verbose text in condensed mode
         const hasVerboseText = hints.some(
           (hint) =>
             typeof hint.label === 'string' &&
-            hint.label.includes('sustained till'),
+            hint.label.includes('sustained for'),
         );
         assert.ok(
           !hasVerboseText,
-          'condensed mode should not use verbose "sustained till" text',
+          'condensed mode should not use verbose "sustained for" text',
         );
       });
     });
@@ -222,7 +223,7 @@ describe('AnvilInlayHintGenerator', function () {
         assert.ok(hints.length > 0, 'should return hints in full mode');
       });
 
-      it('should use verbose format ("sustained till X ends") when sustained events exist', function () {
+      it('should use verbose format ("sustained for X cycle(s) after execution") when sustained events exist', function () {
         const sustainedHints = hints.filter(
           (hint) =>
             typeof hint.label === 'string' &&
@@ -293,7 +294,8 @@ describe('AnvilInlayHintGenerator', function () {
 
   describe('event information', function () {
     const CYCLE_PREFIX_FULL = 'cycle ';
-    const SUSTAINED_TEXT_PATTERN = /sustained till .+ ends/;
+    const SUSTAINED_TEXT_PATTERN =
+      /sustained for .+ cycle\(s\) after execution/;
 
     const settings = {
       projectRoot,
