@@ -157,10 +157,14 @@ export class AnvilInlayHintGenerator {
 
       // postfix: indicate sustain lifetime info, if applicable
       const sustainSymbol = ascii ? '~>' : '↘';
+      const sustainHasUnknown =
+        sustainLifetime && hasSymbolicParts(sustainLifetime);
+      const sustainBracketLeft = sustainHasUnknown ? '{' : '';
+      const sustainBracketRight = sustainHasUnknown ? '}' : '';
       postfixText += sustainLifetime
         ? options.mode === 'full'
           ? ` sustained for ${formatCycleTime(sustainLifetime, { ascii })} cycle(s) after execution`
-          : ` ${sustainSymbol} ${formatCycleTime(sustainLifetime, { ascii, compact: true, maxLength: 12 })}c`
+          : ` ${sustainSymbol} ${sustainBracketLeft}${formatCycleTime(sustainLifetime, { ascii, compact: true, maxLength: 12 })}${sustainBracketRight}c`
         : '';
 
       if (postfixText && lspEndCol !== undefined) {
