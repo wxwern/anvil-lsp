@@ -1,12 +1,20 @@
 /**
  * Typesafe, schema-validated access to the Anvil info JSON lookup tables.
  *
+ * These JSON files are user-facing content tables rather than arbitrary data:
+ * they drive completion labels/details, hover explanations, timing annotation
+ * snippets, and example blocks shown in documentation popups.
+ *
  * Two singletons are exported:
  *   - `completionInfo`  - derived from completion-info.json
  *   - `astNodeInfo`     - derived from ast-node-info.json
  *
- * Both are validated with Zod at module load time; an error is thrown
- * immediately if the JSON files are missing or do not match the expected
+ * This file is the source of truth for the accepted structure of
+ * `server/src/info/*.json`. If comments inside the JSON drift, or if higher
+ * level docs become stale, trust the Zod schemas and wrapper behaviour here.
+ *
+ * Both JSON payloads are validated with Zod at module load time; an error is
+ * thrown immediately if the files are missing or do not match the expected
  * schema.
  */
 
@@ -74,12 +82,19 @@ export interface KeywordInfoEntryVariant {
   astKind: string | null;
   /** Markdown documentation string, or null if absent. */
   description: string | null;
-  /** A snippet that can be inserted to complete a template pattern, or null if not applicable. */
+  /**
+   * Insert text used for the completion item. When non-null and different from
+   * the label, this is usually emitted as an LSP snippet.
+   */
   snippet: string | null;
   /**
-   * Where this variant is valid.
+   * Where this variant is intended to be valid.
    * Both an absent scope field and an explicit JSON null mean top-level
    * global scope (`{ kind: 'global' }`).
+   *
+   * TODO: the parser normalises and exposes this field, and tests cover the
+   * normalisation rules, but the current completion generator does not yet
+   * actively filter built-in keyword completions by scope.
    */
   scope: ScopeValue;
 }
@@ -89,7 +104,9 @@ export interface KeywordInfoEntryVariant {
 //
 
 export interface CompletionKindInfoEntry {
+  /** Short detail string shown next to AST-backed completion items. */
   hint: string;
+  /** String form of an LSP CompletionItemKind enum member. */
   lspKind: string;
 }
 
@@ -102,20 +119,32 @@ export interface KeywordInfoEntry {
 }
 
 export interface TimingInfoEntry {
+  /** Short detail string shown in the completion list. */
   hint: string;
+  /** Snippet or plain insert text emitted by the timing completion heuristic. */
   insertText: string;
+  /** String form of an LSP CompletionItemKind enum member. */
   lspKind: string;
-  /** Associated AST node kind, or null if absent. */
+  /**
+   * Associated AST node key (`kind` or `kind/type`), used only for optional
+   * description back-fill from ast-node-info.json.
+   */
   astKind: string | null;
+  /** Markdown documentation shown in completion docs, after `%s` substitution. */
   description: string | null;
 }
 
 export interface AstNodeInfoEntry {
+  /** Short human-readable label, used as the node name in explanations. */
   name: string;
+  /** Markdown explanation block used in hover/completion docs. */
   description: string;
   /** Anvil code examples for this node, or null when none are provided. */
   examples: string | null;
-  /** True for internal/compiler-only nodes that are not user-facing. */
+  /**
+   * True for internal/compiler-only nodes that should not appear in the
+   * user-facing "Anvil Info" explanation section.
+   */
   internal: boolean;
 }
 
@@ -125,6 +154,39 @@ export interface AstNodeInfoEntry {
 //
 
 // --- completion-info.json ---
+//
+// Shape overview:
+//   {
+//     kind: { <kind-or-kind/type>: CompletionKindEntry | comment-string }
+//     builtInKeywordCompletions: {
+//       <keyword>: RawKeywordEntry | comment-string
+//     }
+//     timingCompletions?: {
+//       _substitutionPatterns?: {...}   // TODO: currently validated but not consumed
+//       lifetime: { <pattern>: RawTimingEntry }
+//       sync: { <pattern>: RawTimingEntry }
+//     }
+//   }
+//
+// Runtime consumers:
+//   - `kind` entries are used by `CompletionInfo.getKindMetadata()`, primarily
+//     by `AnvilCompletionGenerator` to derive completion detail text and LSP
+//     item kinds for AST-backed symbols.
+//   - `builtInKeywordCompletions` entries are expanded into one or more keyword
+//     completion variants by `expandKeywordVariants()` and then used by
+//     `AnvilCompletionGenerator.getAnvilBuiltinCompletions()`.
+//   - `timingCompletions` entries are used only by the timing-annotation
+//     completion heuristic in
+//     `AnvilCompletionGenerator.checkTimingAnnotHeuristics()`.
+//
+// Documentation back-fill:
+//   Any completion entry carrying a non-null `astKind` may omit its own
+//   `description`; in that case the description is back-filled from the
+//   matching `ast-node-info.json` entry.
+//
+// Comment entries:
+//   Plain string values are allowed so the JSON can carry inline comments like
+//   `_comment`. These are intentionally ignored by the wrappers below.
 
 const RawCompletionKindEntrySchema = z.object({
   hint: z.string(),
@@ -132,6 +194,27 @@ const RawCompletionKindEntrySchema = z.object({
 });
 
 // --- ast-node-info.json ---
+//
+// Shape overview:
+//   {
+//     kind: { <kind-or-kind/type>: AstNodeEntry | comment-string }
+//   }
+//
+// Runtime consumers:
+//   - `AstNodeInfo.getFor()` is used by `AnvilDescriptionGenerator` to render
+//     the "Anvil Info" explanation block on hover and completion docs.
+//   - `CompletionInfo` also consults this table to back-fill missing
+//     descriptions for completion and timing-completion entries that specify an
+//     `astKind` but no explicit `description`.
+//
+// Key format:
+//   - `kind` for broad node families, e.g. `proc_def`
+//   - `kind/type` when the AST `type` discriminator changes the user-facing
+//     meaning, e.g. `expr/binop` or `data_type/record`
+//
+// Comment entries:
+//   Plain string values are likewise ignored so `_comment` keys can be kept in
+//   the JSON file without affecting runtime behaviour.
 
 const Nullable = <T extends z.ZodTypeAny>(t: T) => t.nullable();
 const ScalarOrArray = <T extends z.ZodTypeAny>(t: T) =>
@@ -139,6 +222,11 @@ const ScalarOrArray = <T extends z.ZodTypeAny>(t: T) =>
 const NullableScalarOrArray = <T extends z.ZodTypeAny>(t: T) =>
   z.union([Nullable(t), z.array(Nullable(t))]);
 
+// Raw keyword entries support scalar-or-array fields because one source token
+// may map to multiple semantic contexts. For example, a single keyword may
+// need one variant for a top-level declaration and another for a nested
+// parameter context. The wrapper layer expands these parallel arrays into a
+// flat list of concrete variants.
 const RawKeywordEntrySchema = z.object({
   category: ScalarOrArray(z.string()),
   hint: ScalarOrArray(z.string()),
@@ -149,6 +237,11 @@ const RawKeywordEntrySchema = z.object({
   scope: NullableScalarOrArray(z.string()).optional(),
 });
 
+// Timing entries are narrower than built-in keyword entries. Each key is a
+// syntactic pattern shown in the timing-annotation completion UI, and each
+// value provides the label/detail/snippet/description metadata for that one
+// pattern. The `%s` placeholder is expanded manually by
+// `AnvilCompletionGenerator` against sibling message names.
 const RawTimingEntrySchema = z.object({
   hint: z.string(),
   insertText: z.string(),
@@ -219,6 +312,10 @@ function toNullableArray(
  *     `{ kind: 'global' }` - there is no distinction between the two.
  *
  * Throws if two fields with length > 1 disagree on length.
+ *
+ * This expansion is important because runtime completion generation iterates
+ * concrete variants only; it never looks at the raw scalar-or-array source
+ * shape again.
  */
 function expandKeywordVariants(
   keyword: string,
@@ -322,6 +419,10 @@ export class CompletionInfo {
     /**
      * Look up the description for an astKind string (e.g. "proc_def" or
      * "expr/if_expr") from the provided AstNodeInfo, if any.
+     *
+     * This is the main link between completion-info.json and
+     * ast-node-info.json: completion metadata can stay terse and rely on the
+     * AST-node table for the canonical prose description.
      */
     function resolveDescription(
       astKind: string | null,
@@ -348,7 +449,8 @@ export class CompletionInfo {
     }
     this.kindMap = new Map(kindEntries);
 
-    // keyword map - strip comment entries, expand variants
+    // keyword map - strip comment entries, expand variants, and back-fill
+    // missing descriptions from ast-node-info.json when astKind is present.
     const keywordEntries: [string, KeywordInfoEntry][] = [];
     for (const [k, v] of Object.entries(raw.builtInKeywordCompletions)) {
       if (typeof v === 'string') continue;
@@ -361,6 +463,10 @@ export class CompletionInfo {
     this.keywordMap = new Map(keywordEntries);
 
     // timing maps
+    //
+    // These are intentionally kept separate because the completion heuristic
+    // treats the first lifetime annotation and later sync annotations as two
+    // different syntactic contexts.
     const lifetimeEntries: [string, TimingInfoEntry][] = [];
     const syncEntries: [string, TimingInfoEntry][] = [];
     if (raw.timingCompletions) {
@@ -395,7 +501,17 @@ export class CompletionInfo {
     this.syncTimingMap = new Map(syncEntries);
   }
 
-  /** LSP completion metadata for an AST node kind. Returns `null` if absent. */
+  /**
+   * LSP completion metadata for an AST node kind. Returns `null` if absent.
+   *
+   * Resolution order matters:
+   *   1. for plain `(kind, type)` lookups, prefer `kind/type`, then `kind`
+   *   2. for `AnvilAstNode` lookups, optionally override with the underlying
+   *      `data_type/record` or `data_type/variant` kind for typedef nodes
+   *
+   * That typedef override is what lets completions for named struct/enum types
+   * surface as `Struct`/`Enum` instead of generic `Type` where appropriate.
+   */
   getKindMetadata(
     kind: string | AnvilAstNode | null,
     type?: string | null,
@@ -435,17 +551,26 @@ export class CompletionInfo {
   /**
    * Keyword completion data for a built-in keyword. Returns `null` if absent.
    * Use `.variants` to iterate all expanded variants.
+   *
+   * Each variant already has broadcast scalar fields expanded, scope
+   * normalised, and any missing description back-filled from ast-node-info.
    */
   getKeywordMetadata(keyword: string): KeywordInfoEntry | null {
     return this.keywordMap.get(keyword) ?? null;
   }
 
-  /** Timing completion entry for a lifetime pattern key (e.g. `"#N"`, `"eternal"`). */
+  /**
+   * Timing completion entry for a lifetime pattern key (e.g. `"#N"`,
+   * `"eternal"`, or a `%s` placeholder pattern).
+   */
   getLifetimeTimingEntry(key: string): TimingInfoEntry | null {
     return this.lifetimeTimingMap.get(key) ?? null;
   }
 
-  /** Timing completion entry for a sync pattern key (e.g. `"dyn"`, `"#N"`). */
+  /**
+   * Timing completion entry for a sync pattern key (e.g. `"dyn"`, `"#N"`, or
+   * a `%s` placeholder pattern).
+   */
   getSyncTimingEntry(key: string): TimingInfoEntry | null {
     return this.syncTimingMap.get(key) ?? null;
   }
@@ -512,6 +637,16 @@ export class AstNodeInfo {
    *
    * This intelligently extracts the most useful lookup keys.
    *
+   * Resolution order matters here too:
+   *   1. prefer `kind/type` over `kind`
+   *   2. if the node resolves as a typedef, prefer the underlying
+   *      `data_type/record` or `data_type/variant` entry when available
+   *   3. if the node is an `expr/literal`, prefer the literal subtype entry
+   *      such as `literal/decimal`
+   *
+   * This behaviour is what keeps user-facing explanations specific even when
+   * the raw AST node category is broad.
+   *
    * Returns `null` if not found.
    */
   getFor(node: AnvilAstNode): AstNodeInfoEntry | null {
@@ -553,6 +688,10 @@ export class AstNodeInfo {
 //
 // MODULE-LEVEL INITIALISATION
 // (throws on invalid JSON)
+//
+// The module exports below are intentionally created only after full schema
+// validation succeeds. A malformed JSON edit should fail fast at load time
+// rather than surface later as partial or misleading editor behaviour.
 //
 
 const _rawCompletionInfo = validate(

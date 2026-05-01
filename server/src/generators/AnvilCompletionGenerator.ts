@@ -64,7 +64,8 @@ export class AnvilCompletionDetail {
       const desc = variant.description ?? null;
 
       const _scope = variant.scope;
-      // TODO: Check scope
+      // TODO: Enforce built-in keyword completion scope filtering using
+      // `variant.scope` from completion-info.json.
 
       list.push(
         AnvilCompletionDetail.create(

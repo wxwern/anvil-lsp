@@ -14,6 +14,8 @@ To install the language server, view the [installation instructions](#language-s
 
 To install a supported version of Anvil, view the [Anvil installation instructions](#anvil-installation).
 
+If you want to develop or maintain this repository, see the [maintainer guide](MAINTAINERS.md).
+
 ---
 
 ## Feature Support
@@ -162,6 +164,8 @@ You can update this repo and forcibly resync submodules as such:
 
 ## Development Workflows
 
+For a full repository architecture and maintainer guide, see [MAINTAINERS.md](MAINTAINERS.md).
+
 On *nix systems, run the dev scripts in the root of the repository to format/build/test all components
 (language server, anvil compiler, all editor extensions):
 ```bash
@@ -174,5 +178,3 @@ Or specify component(s) as argument(s) to build only said component, e.g.,
 ```bash
 ./build.sh anvil vscode
 ```
-
-
