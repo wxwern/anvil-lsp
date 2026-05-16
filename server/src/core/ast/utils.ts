@@ -45,7 +45,10 @@ export function isAstSchemaVersionCompatible(
   const cmp = compareAstSchemaVersions(i, r);
 
   if (cmp === 0 && i.wip_build !== r.wip_build) {
-    return false; // versions are incompatible due to WIP status
+    if (i.wip_build === undefined || r.wip_build === undefined) {
+      return false; // one version is WIP and the other is not, so they are incompatible
+    }
+    return i.wip_build >= r.wip_build; // compatible if WIP build numbers are compatible
   }
 
   // compatible if i >= r and major versions match
