@@ -6,7 +6,7 @@
 
 ## Requires
 
-- Anvil [`6199e2b` or later](https://github.com/wxwern/anvil/tree/add-annotated-ast-output) with **experimental AST output** support. For best results, you may use the pinned version included as a submodule in this repository.
+- Anvil [`96ec1b0` or later](https://github.com/wxwern/anvil/tree/add-annotated-ast-output)\* with **experimental AST output** support. For best results, you may use the pinned version included as a submodule in this repository.
 
 - [Node.js](https://nodejs.org/en) version 22 or later.
 
@@ -15,6 +15,8 @@ To install the language server, view the [installation instructions](#language-s
 To install a supported version of Anvil, view the [Anvil installation instructions](#anvil-installation).
 
 If you want to develop or maintain this repository, see the [maintainer guide](MAINTAINERS.md).
+
+\* The linked branch is experimental and may be rebased. If you notice diverging commits, you may want to delete locally and retrieve a clean copy (or use `./update.sh` to resync your local repository and its submodules to the latest versions).
 
 ---
 
