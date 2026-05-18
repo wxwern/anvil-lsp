@@ -206,6 +206,60 @@ describe('AnvilInlayHintGenerator', function () {
       });
     });
 
+    describe('asciiOnlyIcons: true', function () {
+      const LONE_MARKER = ' ─ ';
+      const LONE_MARKER_ASCII = ' - ';
+      const START_MARKER = ' ┌ ';
+      const START_MARKER_ASCII = ',- ';
+      const CONT_MARKER = ' │ ';
+      const CONT_MARKER_ASCII = '|  ';
+      const END_MARKER = ' └ ';
+      const END_MARKER_ASCII = "'- ";
+
+      const settings = {
+        projectRoot,
+        executablePath: anvilBinaryPath,
+        asciiOnlyIcons: true,
+        showTimingInfo: { asInlayHints: 'condensed' as const },
+      } satisfies AnvilServerSettings;
+
+      let hints: InlayHint[];
+
+      before(function () {
+        hints = AnvilInlayHintGenerator.generateInlayHints(doc, settings);
+      });
+
+      it('should use ASCII markers for sustained events and block hints', function () {
+        const labels = hints
+          .map((hint) => (typeof hint.label === 'string' ? hint.label : ''))
+          .filter(Boolean);
+
+        assert.ok(
+          labels.some(
+            (label) =>
+              label.includes(SUSTAINED_SYMBOL_ASCII) ||
+              label.includes(LONE_MARKER_ASCII) ||
+              label.includes(START_MARKER_ASCII) ||
+              label.includes(CONT_MARKER_ASCII) ||
+              label.includes(END_MARKER_ASCII),
+          ),
+          'should include ASCII-only timing markers',
+        );
+
+        assert.ok(
+          labels.every(
+            (label) =>
+              !label.includes(SUSTAINED_SYMBOL) &&
+              !label.includes(LONE_MARKER) &&
+              !label.includes(START_MARKER) &&
+              !label.includes(CONT_MARKER) &&
+              !label.includes(END_MARKER),
+          ),
+          'should not include Unicode timing markers when ASCII-only icons are enabled',
+        );
+      });
+    });
+
     describe('showTimingInfo: "full"', function () {
       const settings = {
         projectRoot,

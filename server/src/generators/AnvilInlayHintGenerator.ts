@@ -34,6 +34,7 @@ export class AnvilInlayHintGenerator {
       hints.push(
         ...this.computeLifetimeInlayHints(anvilDocument, {
           mode: timingHints.asInlayHints,
+          ascii: settings.asciiOnlyIcons ?? false,
           debug: settings.debug,
         }),
       );
@@ -51,7 +52,7 @@ export class AnvilInlayHintGenerator {
    */
   private static computeLifetimeInlayHints(
     anvilDocument: AnvilDocument,
-    options: { mode: 'condensed' | 'full'; debug?: boolean },
+    options: { mode: 'condensed' | 'full'; ascii: boolean; debug?: boolean },
   ): InlayHint[] {
     if (!anvilDocument.anvilAst) {
       inlayHintLogger.info(
@@ -60,7 +61,7 @@ export class AnvilInlayHintGenerator {
       return [];
     }
 
-    const ascii = false;
+    const { ascii } = options;
 
     const lineCount = anvilDocument.textDocument.lineCount;
 

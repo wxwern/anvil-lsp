@@ -51,6 +51,12 @@
           "default": "",
           "description": "Path to the Anvil compiler binary. Defaults to 'anvil' in your PATH."
         },
+        "anvil.asciiOnlyIcons": {
+          "scope": "window",
+          "type": "boolean",
+          "default": false,
+          "description": "Use ASCII-only characters instead of Unicode when displaying symbols or icons."
+        },
         "anvil.showTimingInfo": {
           "scope": "window",
           "default": { "asInlayHints": "condensed", "onHover": true },

@@ -151,6 +151,7 @@ export interface AnvilServerSettings {
   maxNumberOfProblems?: number;
   projectRoot?: string;
   executablePath?: string;
+  asciiOnlyIcons?: boolean;
   snippets?: { fancy?: boolean };
   showTimingInfo?: ShowTimingInfo;
   showSyntaxHelp?: ShowSyntaxHelp;
@@ -159,6 +160,7 @@ export interface AnvilServerSettings {
 
 export const DEFAULT_ANVIL_SERVER_SETTINGS: AnvilServerSettings = {
   maxNumberOfProblems: 1000,
+  asciiOnlyIcons: false,
   showTimingInfo: {
     asInlayHints: 'condensed',
     onHover: true,
