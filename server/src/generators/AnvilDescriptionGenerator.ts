@@ -11,6 +11,7 @@ import { astNodeInfo } from '../info/parsed';
 import { diagnosticsLogger } from '../utils/logger';
 import {
   formatCycleTime,
+  formatCycleTimeDefinitionsForAll,
   isZeroCycleTime,
 } from '../utils/AnvilCycleTimeFormatter';
 import { computeSustainEndCycle } from '../utils/AnvilCycleTimeCalculator';
@@ -139,7 +140,10 @@ export class AnvilDescriptionGenerator {
    * Returns a human-friendly lifetime description for the given node (or its parents),
    * or an empty string if no lifetime information is available.
    */
-  private static describeLifetime(node: AnvilAstNode): string {
+  private static describeLifetime(
+    node: AnvilAstNode,
+    timingVariableExpansions: 'all' | 'knownOnly' | 'none' = 'all',
+  ): string {
     // Walk up ancestor chain until we find a node with event info
     let event = node.event;
     let current: AnvilAstNode | null = node;
@@ -178,7 +182,41 @@ export class AnvilDescriptionGenerator {
           )}\`\n`
         : '';
 
-    return execStr + blockingStr + sustainLifetimeStr + sustainEndCycleStr;
+    const timingDefinitions =
+      node.eventExprs && timingVariableExpansions !== 'none'
+        ? formatCycleTimeDefinitionsForAll(
+            [
+              event.prevDelay,
+              isOriginalNode ? blockingDelay : null,
+              isOriginalNode ? sustainLifetime : null,
+              isOriginalNode && sustainLifetime
+                ? computeSustainEndCycle(
+                    event.prevDelay,
+                    event.nextDelay,
+                    sustainLifetime,
+                  )
+                : null,
+            ].filter(
+              (cycleTime): cycleTime is NonNullable<typeof cycleTime> =>
+                cycleTime !== null && cycleTime !== undefined,
+            ),
+            node.eventExprs!,
+            {
+              includeUnknowns: timingVariableExpansions !== 'knownOnly',
+            },
+          )
+            .filter((line, index, arr) => arr.indexOf(line) === index)
+            .map((line) => ` - \`${line}\`\n`)
+            .join('')
+        : '';
+
+    return (
+      execStr +
+      blockingStr +
+      sustainLifetimeStr +
+      sustainEndCycleStr +
+      (timingDefinitions ? `\nwhere:\n\n${timingDefinitions}` : '')
+    );
   }
 
   /**
@@ -534,6 +572,8 @@ export class AnvilDescriptionGenerator {
       definitions?: boolean;
       /** Human-friendly lifetime/timing description for this node. */
       lifetime?: boolean;
+      /** Controls visibility of timing variable expansion lines. */
+      timingVariableExpansions?: 'all' | 'knownOnly' | 'none';
       /** Explanations of the node */
       explanations?: boolean;
       /** Code examples from ast-node-info.json. Only shown when explanations is also true. */
@@ -623,7 +663,10 @@ export class AnvilDescriptionGenerator {
       }
 
       // All nodes: show event timing if available
-      const lifetimeDesc = this.describeLifetime(node);
+      const lifetimeDesc = this.describeLifetime(
+        node,
+        segments?.timingVariableExpansions,
+      );
       if (lifetimeDesc) executionParts.push(lifetimeDesc);
 
       // Merge parts together with a header if there are any

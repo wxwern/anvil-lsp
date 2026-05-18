@@ -108,6 +108,14 @@ describe('AnvilCompiler', () => {
       'Expected compilation to succeed',
     );
     assert.strictEqual(importResult.errors.length, 0, 'Expected no errors');
+    assert.ok(importResult.ast, 'Expected parsed AST output');
+    const root = importResult.ast.root('samples/lsp_test.anvil');
+    assert.ok(root, 'Expected root AST node for lsp test file');
+    const eventGraphs = root.resolve()?.event_graphs;
+    assert.ok(eventGraphs, 'Expected event graphs');
+    for (const graph of eventGraphs) {
+      assert.ok(graph.event_exprs, 'Expected event expression lookup table');
+    }
   });
 
   it('should compile the complex lsp test file successfully', async () => {

@@ -355,6 +355,11 @@ connection.onHover(async (params) => {
           documentation: true,
           definitions: true,
           lifetime: showTimingInfo.onHover,
+          timingVariableExpansions: showTimingInfo.onHover
+            ? showTimingInfo.includeUnknownVariableDefinitions
+              ? 'all'
+              : 'knownOnly'
+            : 'none',
           explanations: showSyntaxHelp.onHover,
           examples: showSyntaxHelp.includeExamples,
           debug: D,
@@ -612,6 +617,12 @@ connection.onCompletionResolve(async (item: CompletionItem) => {
               documentation: true,
               definitions: true,
               lifetime: showTimingInfo.onAutocomplete,
+              timingVariableExpansions:
+                showTimingInfo.onAutocomplete && showTimingInfo.onHover
+                  ? showTimingInfo.includeUnknownVariableDefinitions
+                    ? 'all'
+                    : 'knownOnly'
+                  : 'none',
               explanations: includeExplanation,
               examples: showSyntaxHelp.includeExamples,
             },

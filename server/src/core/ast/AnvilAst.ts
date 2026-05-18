@@ -10,6 +10,7 @@ import {
   type AnvilCompUnit,
   AnvilCycleTime,
   AnvilCycleTimeSchema,
+  type AnvilEventExpr,
 } from './schema';
 import { astLogger } from '../../utils/logger';
 
@@ -105,6 +106,9 @@ export class AnvilAstNode<T = any, U extends AnvilAstNode | unknown = unknown> {
   private readonly _eventIdCycleDelayLookup:
     | { [proc: string]: { [tid: number]: { [eid: number]: AnvilCycleTime } } }
     | undefined = undefined;
+  private readonly _eventExprLookup:
+    | { [proc: string]: { [sym: string]: AnvilEventExpr } }
+    | undefined = undefined;
 
   private readonly _path: AnvilAstNodeAbsolutePath;
   private readonly _fsBasepath: string;
@@ -123,6 +127,7 @@ export class AnvilAstNode<T = any, U extends AnvilAstNode | unknown = unknown> {
     this._root = root;
     this._path = path;
     this._eventIdCycleDelayLookup = {};
+    this._eventExprLookup = {};
 
     if (!this._root.file_name) {
       throw new Error('Root compilation unit must have a file_name');
@@ -133,6 +138,11 @@ export class AnvilAstNode<T = any, U extends AnvilAstNode | unknown = unknown> {
       if (!this._eventIdCycleDelayLookup[procName]) {
         this._eventIdCycleDelayLookup[procName] = {};
       }
+      if (!this._eventExprLookup[procName]) {
+        this._eventExprLookup[procName] = {};
+      }
+
+      Object.assign(this._eventExprLookup[procName], graph.event_exprs);
 
       for (const thread of graph.threads) {
         const tid = thread.tid;
@@ -145,6 +155,23 @@ export class AnvilAstNode<T = any, U extends AnvilAstNode | unknown = unknown> {
           this._eventIdCycleDelayLookup[procName][tid][eid] = event.delay;
         }
       }
+    }
+  }
+
+  private get_enclosing_proc_name(): string | null {
+    let current: AnvilAstNode = this;
+
+    while (true) {
+      if (current.kind === 'proc_def') {
+        return current.unsafeTraverse('name').resolveAs(z.string());
+      }
+
+      if (current.isRoot()) {
+        return null;
+      }
+
+      const currentNode: AnvilAstNode = current;
+      current = currentNode.up() as AnvilAstNode;
     }
   }
 
@@ -642,6 +669,19 @@ export class AnvilAstNode<T = any, U extends AnvilAstNode | unknown = unknown> {
     }
 
     return [...lifetime];
+  }
+
+  /**
+   * Returns the per-process timing expression lookup table for this node, if any.
+   */
+  get eventExprs(): { [sym: string]: AnvilEventExpr } | null {
+    const procName = this.get_enclosing_proc_name();
+
+    if (!procName) {
+      return null;
+    }
+
+    return this._eventExprLookup?.[procName] ?? null;
   }
 
   /**

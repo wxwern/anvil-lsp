@@ -73,8 +73,8 @@ export function resolveShowSyntaxHelp(
  * surfaced in the editor.
  *
  * Accepted forms:
- *   - `true`   -> asInlayHints: "condensed", onHover: true,  onAutocomplete: true
- *   - `false`  -> asInlayHints: "none",      onHover: false, onAutocomplete: false
+ *   - `true`   -> asInlayHints: "condensed", onHover: true,  includeUnknownVariableDefinitions: true,  onAutocomplete: true
+ *   - `false`  -> asInlayHints: "none",      onHover: false, includeUnknownVariableDefinitions: false, onAutocomplete: false
  *   - An object with individual overrides for each surface.
  *
  * `asInlayHints` values:
@@ -85,12 +85,18 @@ export function resolveShowSyntaxHelp(
  *                      every line.
  *   - `true`         - Alias for "condensed".
  *   - `false`        - Alias for "none".
+ *
+ * `includeUnknownVariableDefinitions`:
+ *   - `true`          - Include unresolved remainder symbols in the timing
+ *                       variable definitions block (default).
+ *   - `false`         - Show only known timing variable definitions.
  */
 export type ShowTimingInfo =
   | boolean
   | {
       asInlayHints?: boolean | 'none' | 'condensed' | 'full';
       onHover?: boolean;
+      includeUnknownVariableDefinitions?: boolean;
       onAutocomplete?: boolean;
     };
 
@@ -98,12 +104,13 @@ export type ShowTimingInfo =
 export interface ResolvedShowTimingInfo {
   asInlayHints: 'none' | 'condensed' | 'full';
   onHover: boolean;
+  includeUnknownVariableDefinitions: boolean;
   onAutocomplete: boolean;
 }
 
 /**
  * Normalise any accepted TimingInfo value into the canonical resolved form.
- * Missing fields fall back to the defaults: asInlayHints="condensed", onHover=true, onAutocomplete=true.
+ * Missing fields fall back to the defaults: asInlayHints="condensed", onHover=true, includeUnknownVariableDefinitions=true, onAutocomplete=true.
  */
 export function resolveTimingInfo(
   raw: ShowTimingInfo | undefined,
@@ -112,6 +119,7 @@ export function resolveTimingInfo(
     return {
       asInlayHints: 'condensed',
       onHover: true,
+      includeUnknownVariableDefinitions: true,
       onAutocomplete: true,
     };
   }
@@ -119,6 +127,7 @@ export function resolveTimingInfo(
     return {
       asInlayHints: raw ? 'condensed' : 'none',
       onHover: raw,
+      includeUnknownVariableDefinitions: raw,
       onAutocomplete: raw,
     };
   }
@@ -132,6 +141,8 @@ export function resolveTimingInfo(
   return {
     asInlayHints,
     onHover: raw.onHover ?? true,
+    includeUnknownVariableDefinitions:
+      raw.includeUnknownVariableDefinitions ?? true,
     onAutocomplete: raw.onAutocomplete ?? true,
   };
 }
@@ -151,6 +162,7 @@ export const DEFAULT_ANVIL_SERVER_SETTINGS: AnvilServerSettings = {
   showTimingInfo: {
     asInlayHints: 'condensed',
     onHover: true,
+    includeUnknownVariableDefinitions: true,
     onAutocomplete: true,
   },
   showSyntaxHelp: { onHover: true, onAutocomplete: 'anvilKeywords' },

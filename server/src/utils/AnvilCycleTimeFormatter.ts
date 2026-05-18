@@ -1,4 +1,14 @@
-import { AnvilCycleTime, AnvilCycleTimeTerm } from '../core/ast/schema';
+import {
+  AnvilCycleTime,
+  AnvilCycleTimeTerm,
+  type AnvilEventExpr,
+} from '../core/ast/schema';
+
+export type AnvilCycleTimeExpressionLookup = Record<string, AnvilEventExpr>;
+
+export interface FormatCycleTimeDefinitionOptions extends FormatCycleTimeOptions {
+  includeUnknowns?: boolean;
+}
 
 /**
  * Options for formatting AnvilCycleTime objects.
@@ -26,46 +36,43 @@ export interface FormatCycleTimeOptions {
   parenthesize?: boolean;
 }
 
+function compareSymbols(a: string, b: string): number {
+  const aIsGenerated = /^(or|max)\d+$/.test(a);
+  const bIsGenerated = /^(or|max)\d+$/.test(b);
+
+  if (aIsGenerated !== bIsGenerated) {
+    return aIsGenerated ? 1 : -1;
+  }
+
+  const pattern = /^(.*?)(\d+)?$/;
+  const aMatch = a.match(pattern);
+  const bMatch = b.match(pattern);
+
+  if (!aMatch || !bMatch) {
+    return a.localeCompare(b);
+  }
+
+  const aBase = aMatch[1];
+  const aNum = aMatch[2] ? parseInt(aMatch[2], 10) : 0;
+  const bBase = bMatch[1];
+  const bNum = bMatch[2] ? parseInt(bMatch[2], 10) : 0;
+
+  if (aBase === bBase) {
+    return aNum - bNum;
+  }
+
+  return aBase.localeCompare(bBase);
+}
+
 function compareTerm(a: AnvilCycleTimeTerm, b: AnvilCycleTimeTerm): number {
-  const aIsConst = 'const' in a;
-  const bIsConst = 'const' in b;
-  const aIsSym = 'sym' in a && !('max' in a) && !('or' in a);
-  const bIsSym = 'sym' in b && !('max' in b) && !('or' in b);
-  const aIsMaxOrOr = 'max' in a || 'or' in a;
-  const bIsMaxOrOr = 'max' in b || 'or' in b;
+  const aIsConst = a.const !== undefined;
+  const bIsConst = b.const !== undefined;
 
-  if (aIsSym && !bIsSym) return -1; // Symbolic variables first
-  if (!aIsSym && bIsSym) return 1;
-  if (aIsMaxOrOr && !bIsMaxOrOr) return -1; // Max/or terms next
-  if (!aIsMaxOrOr && bIsMaxOrOr) return 1;
-  if (aIsConst && !bIsConst) return 1; // Constants last
   if (!aIsConst && bIsConst) return -1;
+  if (aIsConst && !bIsConst) return 1;
 
-  const symSorter = (a: string, b: string) => {
-    const pattern = /^(.*?)(\d+)?$/; // Matches base name and optional numeric suffix
-    const aMatch = a.match(pattern);
-    const bMatch = b.match(pattern);
-
-    if (!aMatch || !bMatch) {
-      return a.localeCompare(b); // Fallback to lexicographical order
-    }
-
-    const aBase = aMatch[1];
-    const aNum = aMatch[2] ? parseInt(aMatch[2], 10) : 0;
-    const bBase = bMatch[1];
-    const bNum = bMatch[2] ? parseInt(bMatch[2], 10) : 0;
-
-    if (aBase === bBase) {
-      return aNum - bNum; // Sort by numeric suffix if base names are the same
-    }
-
-    return aBase.localeCompare(bBase); // Otherwise sort by base name
-  };
-
-  if ((aIsSym || aIsMaxOrOr) && (bIsSym || bIsMaxOrOr)) {
-    const aName = a.sym;
-    const bName = b.sym;
-    return symSorter(aName || '', bName || '');
+  if (a.sym !== undefined && b.sym !== undefined) {
+    return compareSymbols(a.sym, b.sym);
   }
 
   return 0;
@@ -80,7 +87,7 @@ function compareCycleTimes(a: AnvilCycleTime, b: AnvilCycleTime): number {
   const aFirstSym = a[0];
   const bFirstSym = b[0];
 
-  if (aFirstSym && 'sym' in aFirstSym && bFirstSym && 'sym' in bFirstSym) {
+  if (aFirstSym?.sym !== undefined && bFirstSym?.sym !== undefined) {
     const diff = compareTerm(aFirstSym, bFirstSym);
     if (diff !== 0) {
       return diff; // Sort by first symbolic term if both have one and they are different
@@ -99,84 +106,122 @@ function compareCycleTimes(a: AnvilCycleTime, b: AnvilCycleTime): number {
  * @param parenthesize Whether to include parentheses around sub-expressions
  * @returns Formatted string representation
  */
-function formatTerm(
-  term: AnvilCycleTimeTerm,
-  ascii: boolean,
-  compact: boolean,
-  parenthesize: boolean,
-): string {
-  const ellipsis = ascii ? '...' : '…';
-
-  // Constant value
-  if ('const' in term) {
+function formatTerm(term: AnvilCycleTimeTerm): string {
+  if (term.const !== undefined) {
     return term.const.toString();
   }
 
-  // Symbolic variable (not part of max or or)
-  if ('sym' in term && !('max' in term) && !('or' in term)) {
+  if (term.sym !== undefined) {
     return term.sym;
   }
 
-  // Max operation
-  if ('max' in term) {
-    const formatted = term.max
-      .map((s) => s.sort(compareTerm))
-      .sort(compareCycleTimes)
-      .map((sum) =>
-        formatCycleTime(sum, {
-          ascii,
-          compact,
-          parenthesize: true /*forced for inner terms*/,
-        }),
-      );
-
-    const prefix = 'sym' in term ? term.sym : 'max';
-    const separator = compact ? '/' : ', ';
-    const result =
-      compact && formatted.length > 3
-        ? `${ellipsis}${separator}${formatted.slice(-2).join(separator)}`
-        : formatted.join(separator);
-
-    if (formatted.length > 1 || parenthesize) {
-      return `${prefix}{${result}}`;
-    } else {
-      return result;
-    }
-  }
-
-  // Or operation
-  if ('or' in term && Array.isArray(term.or)) {
-    const formatted = term.or
-      .map((s) => s.sort(compareTerm))
-      .sort(compareCycleTimes)
-      .map((sum) =>
-        formatCycleTime(sum, {
-          ascii,
-          compact,
-          parenthesize: true /*forced for inner terms*/,
-        }),
-      );
-
-    const prefix = 'sym' in term ? term.sym : '';
-    const separator = compact ? '/' : ' / ';
-    const result =
-      compact && formatted.length > 3
-        ? `${ellipsis}${separator}${formatted.slice(-2).join(separator)}`
-        : formatted.join(separator);
-
-    if (formatted.length > 1 || parenthesize) {
-      if (prefix) {
-        return `${prefix}{${result}}`;
-      } else {
-        return `(${result})`;
-      }
-    } else {
-      return result;
-    }
-  }
-
-  // Fallback for unknown structure
   return '?';
+}
+
+function formatChoiceBranch(
+  cycleTime: AnvilCycleTime,
+  options: FormatCycleTimeOptions = {},
+): string {
+  return formatCycleTime(cycleTime, {
+    ...options,
+    parenthesize: cycleTime.length > 1,
+  });
+}
+
+function formatEventExprExpression(
+  expr: AnvilEventExpr,
+  options: FormatCycleTimeOptions = {},
+): string {
+  const branches = expr.value
+    .map((sum) => [...sum].sort(compareTerm))
+    .sort(compareCycleTimes)
+    .map((sum) => formatChoiceBranch(sum, options));
+
+  if (expr.type === 'or') {
+    return branches.join(options.compact ? '/' : ' / ');
+  }
+
+  return `max(${branches.join(', ')})`;
+}
+
+function collectCycleTimeDefinitionLines(
+  cycleTime: AnvilCycleTime,
+  lookup: AnvilCycleTimeExpressionLookup,
+  visited: Set<string>,
+  unknownSymbols: Set<string>,
+  definitions: string[],
+  options: FormatCycleTimeOptions,
+): void {
+  for (const term of cycleTime) {
+    if (term.sym === undefined) {
+      continue;
+    }
+
+    const expr = lookup[term.sym];
+    if (!expr) {
+      unknownSymbols.add(term.sym);
+      continue;
+    }
+
+    if (visited.has(term.sym)) {
+      continue;
+    }
+
+    visited.add(term.sym);
+    unknownSymbols.delete(term.sym);
+    definitions.push(
+      `${term.sym} = ${formatEventExprExpression(expr, options)}`,
+    );
+
+    for (const branch of expr.value) {
+      collectCycleTimeDefinitionLines(
+        branch,
+        lookup,
+        visited,
+        unknownSymbols,
+        definitions,
+        options,
+      );
+    }
+  }
+}
+
+export function formatCycleTimeDefinitions(
+  cycleTime: AnvilCycleTime,
+  lookup: AnvilCycleTimeExpressionLookup,
+  options: FormatCycleTimeDefinitionOptions = {},
+): string[] {
+  return formatCycleTimeDefinitionsForAll([cycleTime], lookup, options);
+}
+
+export function formatCycleTimeDefinitionsForAll(
+  cycleTimes: AnvilCycleTime[],
+  lookup: AnvilCycleTimeExpressionLookup,
+  options: FormatCycleTimeDefinitionOptions = {},
+): string[] {
+  const definitions: string[] = [];
+  const unknownSymbols = new Set<string>();
+  const visited = new Set<string>();
+
+  for (const cycleTime of cycleTimes) {
+    collectCycleTimeDefinitionLines(
+      cycleTime,
+      lookup,
+      visited,
+      unknownSymbols,
+      definitions,
+      options,
+    );
+  }
+
+  const sortedDefinitions = definitions.sort((a, b) => compareSymbols(a, b));
+  const sortedUnknowns = [...unknownSymbols].sort(compareSymbols);
+
+  if (options.includeUnknowns !== false && sortedUnknowns.length > 0) {
+    sortedDefinitions.push(`${sortedUnknowns.join(', ')} = ?`);
+  }
+
+  return sortedDefinitions;
 }
 
 /**
@@ -217,7 +262,7 @@ export function formatCycleTime(
   const symTerms: AnvilCycleTimeTerm[] = [];
 
   for (const term of cycleTime) {
-    if ('const' in term) {
+    if (term.const !== undefined) {
       constTerm += term.const;
     } else {
       symTerms.push(term);
@@ -231,9 +276,7 @@ export function formatCycleTime(
   // Sort terms: symbolic variables first, then max/or terms, then constants
   symTerms.sort(compareTerm);
 
-  const formatted = symTerms.map((term) =>
-    formatTerm(term, ascii, compact, parenthesize),
-  );
+  const formatted = symTerms.map((term) => formatTerm(term));
 
   // merge identical terms (e.g. n1 + n1 -> 2*n1)
   const termCounts: Record<string, number> = {};
@@ -301,7 +344,7 @@ export function isZeroCycleTime(cycleTime: AnvilCycleTime): boolean {
   }
   if (cycleTime.length === 1) {
     const term = cycleTime[0];
-    return 'const' in term && term.const === 0;
+    return term.const !== undefined && term.const === 0;
   }
   return false;
 }
@@ -314,23 +357,8 @@ export function isZeroCycleTime(cycleTime: AnvilCycleTime): boolean {
  */
 export function hasSymbolicParts(cycleTime: AnvilCycleTime): boolean {
   for (const term of cycleTime) {
-    if ('sym' in term && !('max' in term)) {
-      // Direct symbolic variable
+    if (term.sym !== undefined) {
       return true;
-    }
-
-    if ('max' in term) {
-      // Check if any of the max terms have symbolic parts
-      if (term.max.some(hasSymbolicParts)) {
-        return true;
-      }
-    }
-
-    if ('or' in term) {
-      // Check if any of the or terms have symbolic parts
-      if (term.or.some(hasSymbolicParts)) {
-        return true;
-      }
     }
   }
 

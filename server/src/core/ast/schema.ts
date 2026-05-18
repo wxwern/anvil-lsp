@@ -5,7 +5,7 @@ import { isAstSchemaVersionCompatible } from './utils';
 // SCHEMA VERSIONING AND VALIDATION
 //
 
-export const REQUIRED_AST_SCHEMA_VERSION = 'v0.1.0-wip.1';
+export const REQUIRED_AST_SCHEMA_VERSION = 'v0.1.0-wip.2';
 
 const AnvilAstSchemaVersionStringSchema = z
   .string()
@@ -24,54 +24,57 @@ const AnvilAstSchemaVersionStringSchema = z
 /**
  * A term in a cycle time sum expression.
  *
- * Possible terms (recursive):
+ * The AST serializer emits flat additive terms only:
+ * - an integer literal (e.g. { const: 5 })
+ * - a string symbol (e.g. { sym: "n1" }, { sym: "or0" }, { sym: "max0" })
  *
- * - An integer literal (e.g. { const: 5 })
- * - A string literal representing an unknown (e.g. { sym: "n1" })
- * - OR of a list of cycle time sums (e.g. { or: AnvilCycleTime[] })
- * - MAX of a list of cycle time sums (e.g. { sym: "max3", max: AnvilCycleTime[] })
- *
- * A cycle time sum is represented as an array of terms that are added together.
- * For example, "1 + (5 or n1) + max{n2, n3}" would be:
- * [
- *   { const: 1 },
- *   { or: [[{ const: 5 }], [{ sym: "n1" }]] },
- *   { sym: "max1", max: [[{ sym: "n2" }], [{ sym: "n3" }]] }
- * ]
+ * Full definitions for symbolic terms, if available, can be found via the
+ * per-process `event_exprs` lookup table.
  */
+export const AnvilCycleTimeTermSchema = z.union([
+  z.looseObject({
+    const: z.number().int(),
+    sym: z.undefined().optional(),
+  }),
+  z.looseObject({
+    sym: z.string(),
+    const: z.undefined().optional(),
+  }),
+]);
+export type AnvilCycleTimeTerm = z.infer<typeof AnvilCycleTimeTermSchema>;
 
-// Dev note: Previously AnvilCycleTime = (int | str)[], which was a simpler array of constants or symbols.
-// Now it's an array of more complex term objects that can represent OR and MAX operations recursively.
+/**
+ * A cycle time expression expressed as a sum (array) of terms.
+ *
+ * The AST serializer represents all sums as arrays of terms.
+ * For example, the expression "n1 + 5 + or0" would be represented as:
+ *   [ { sym: "n1" }, { const: 5 }, { sym: "or0" } ]
+ */
+export const AnvilCycleTimeSchema = z.array(AnvilCycleTimeTermSchema);
+export type AnvilCycleTime = z.infer<typeof AnvilCycleTimeSchema>;
 
-// Forward-declare for recursion
-export type AnvilCycleTimeTerm =
-  | { const: number }
-  | { sym: string }
-  | { sym?: string; or: AnvilCycleTime[] }
-  | { sym?: string; max: AnvilCycleTime[] };
+/**
+ * A resolved cycle time event expression within the `event_exprs` lookup table.
+ *
+ * This is the value for a symbolic term (e.g. { sym: "or0" }) in a cycle time expression.
+ *
+ * Currently either an "or" or "max" between multiple cycle time expressions.
+ */
+export const AnvilEventExprSchema = z.union([
+  z.looseObject({
+    type: z.literal('or'),
+    value: z.array(AnvilCycleTimeSchema),
+  }),
+  z.looseObject({
+    type: z.literal('max'),
+    value: z.array(AnvilCycleTimeSchema),
+  }),
+]);
+export type AnvilEventExpr = z.infer<typeof AnvilEventExprSchema>;
 
-export type AnvilCycleTime = AnvilCycleTimeTerm[];
-
-export const AnvilCycleTimeTermSchema: z.ZodType<AnvilCycleTimeTerm> = z.lazy(
-  () =>
-    z.union([
-      z.looseObject({ const: z.number().int() }),
-      z.looseObject({ sym: z.string() }),
-      z.looseObject({
-        sym: z.string().optional(),
-        or: z.array(z.lazy(() => AnvilCycleTimeSchema)),
-      }),
-      z.looseObject({
-        sym: z.string().optional(),
-        max: z.array(z.lazy(() => AnvilCycleTimeSchema)),
-      }),
-    ]),
-);
-
-export const AnvilCycleTimeSchema: z.ZodType<AnvilCycleTime> = z.array(
-  AnvilCycleTimeTermSchema,
-);
-
+/**
+ * A position in source code, with line and column numbers. Matches pos_to_yojson: { line, col }
+ */
 export const AnvilPositionSchema = z.looseObject({
   line: z.number().int(),
   col: z.number().int(),
@@ -680,6 +683,7 @@ export type AnvilImportDirective = z.infer<typeof AnvilImportDirectiveSchema>;
 
 export const AnvilEventGraphSchema = z.looseObject({
   proc_name: z.string(),
+  event_exprs: z.record(z.string(), AnvilEventExprSchema),
   threads: z.array(
     z.looseObject({
       tid: z.number().int(),

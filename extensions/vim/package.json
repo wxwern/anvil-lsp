@@ -88,6 +88,11 @@
                     "default": true,
                     "description": "Show clock-cycle timing and lifetime information when hovering over an expression."
                   },
+                  "includeUnknownVariableDefinitions": {
+                    "type": "boolean",
+                    "default": true,
+                    "description": "Include unresolved timing variable definitions such as `n1, n2 = ?` in hover and autocomplete timing definitions blocks."
+                  },
                   "onAutocomplete": {
                     "type": "boolean",
                     "default": false,
